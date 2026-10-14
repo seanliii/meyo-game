@@ -1,0 +1,351 @@
+// The audience counter (PRIVACY.md): Umami, run beside the game on the
+// same machine and reached through the game's own origin. The server puts
+// its tag on the entry document when the deployment names a site to
+// report to (server/stats_tag.ts); this is everything the client adds to
+// what the tracker counts on its own, and what happens to a record before
+// it leaves the browser.
+//
+// Nothing here waits on the tracker, and nothing here needs it. In
+// development, on a self-hosted instance without stats, and in a browser
+// that blocks it, window.umami is absent and every call below is a no-op.
+
+// The paces past arriving, each sent once per page as a named event, so
+// the dashboard can divide them by the visitors they are read against.
+// 'stayed' is the line between a visitor and a click that bounced before
+// the art had drawn; 'played' a match started in this browser, practice,
+// test drive or live game alike and never a replay, which is watching
+// rather than playing; 'offer' the account offer at the end of a visitor's
+// practice match taken (ui/account_offer.ts); 'form' the register tab
+// opened, by hand or by the offer; 'account' an account created here, by
+// form or by Discord. Between 'played' and 'offer' stands the match's own
+// end, below: 'finished' is the line between trying and playing through.
+// Read each against the one before it and the funnel says where people
+// leave.
+export const STATS_STEPS = ['stayed', 'played', 'offer', 'form', 'account'] as const;
+export type StatsStep = (typeof STATS_STEPS)[number];
+
+// How a match ended for this browser, sent once when it leaves the match
+// screen: 'finished' when the match had a winner, 'left' when the player
+// walked out before one, with how many minutes it had run and whether it
+// was practice or online. Read against 'played', it is the one number
+// that says whether a match that started was worth staying in.
+export const MATCH_ENDS = ['finished', 'left'] as const;
+export type MatchEnd = (typeof MATCH_ENDS)[number];
+export type MatchMode = 'practice' | 'online';
+
+export interface MatchEndEvent {
+  name: MatchEnd;
+  data: { minutes: number; mode: MatchMode };
+}
+
+export function matchEndEvent(
+  winner: number | null,
+  seconds: number,
+  mode: MatchMode,
+): MatchEndEvent {
+  const minutes = Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds / 60) : 0;
+  return { name: winner === null ? 'left' : 'finished', data: { minutes, mode } };
+}
+
+// How long a visitor has to still be here to count as having stayed. Long
+// enough that a page closed on sight does not qualify, short enough that
+// it happens while the game is still loading its art on a slow line,
+// because leaving during the load is exactly what it measures.
+export const STAYED_MS = 30_000;
+
+// The opt-out, asked for in the address bar: open the site with ?stats=off
+// once and the tracker stays silent in this browser for good; ?stats=on
+// puts it back. The key is the tracker's own, read before it sends
+// anything, so the choice holds without a line of this code running. It
+// exists because the maintainer's browser is otherwise indistinguishable
+// from a stranger's, and on a quiet day that is most of the count.
+export const CHOICE_PARAM = 'stats';
+// The meta element the server writes the browser's visit id into
+// (server/visit_cookie.ts). It is the one thing that survives the
+// tracker's own monthly reset, so a browser coming back in November is
+// still the browser that came in September.
+export const VISIT_META = 'visit';
+export const DISABLED_KEY = 'umami.disabled';
+// The key the previous counter kept its line under: a date and at most two
+// words, or 'off'. Removed on sight, and a browser that had asked out
+// under the old name stays out.
+export const OLD_VISIT_KEY = 'col.visit';
+export const OLD_OPT_OUT = 'off';
+
+// The name the tracker calls before every send (data-before-send on the
+// tag, server/stats_tag.ts). A global rather than an import because the
+// tracker is not a module: it looks the name up on window.
+export const BEFORE_SEND_NAME = 'colStatsBeforeSend';
+
+// The narrow seam onto storage, so the decisions below are testable
+// without a browser and so a page with storage denied has somewhere to
+// fail quietly.
+export interface StatsStore {
+  read(key: string): string | null;
+  write(key: string, value: string): void;
+  remove(key: string): void;
+}
+
+// The choice in the query, if any. Any other value leaves the counter
+// alone: a stray ?stats=maybe must not quietly switch a browser off.
+export function statsChoice(search: string): 'off' | 'on' | null {
+  const value = new URLSearchParams(search).get(CHOICE_PARAM);
+  return value === 'off' ? 'off' : value === 'on' ? 'on' : null;
+}
+
+export function applyChoice(store: StatsStore, choice: 'off' | 'on' | null): void {
+  if (choice === null) return;
+  try {
+    if (choice === 'off') store.write(DISABLED_KEY, '1');
+    else store.remove(DISABLED_KEY);
+  } catch {
+    // A browser that cannot remember the choice cannot be counted either:
+    // the tracker reads the same storage.
+  }
+}
+
+// Drops the previous counter's line, carrying its opt-out across.
+export function forgetOldLine(store: StatsStore): void {
+  try {
+    const old = store.read(OLD_VISIT_KEY);
+    if (old === null) return;
+    if (old === OLD_OPT_OUT) store.write(DISABLED_KEY, '1');
+    store.remove(OLD_VISIT_KEY);
+  } catch {
+    // Nothing to carry.
+  }
+}
+
+// The only query words a record may carry: the ones an announcement's link
+// puts there so that an app sending no referrer still says where it was
+// posted (docs/deploy.md). Everything else in an address is stripped
+// before it leaves: an invite code (?join=), a confirmation flag, whatever
+// a future link carries.
+export const KEPT_PARAM = /^utm_/;
+
+// An address with its query reduced to the kept words. Absolute in,
+// absolute out; a path in, a path out; something that is neither comes
+// back untouched rather than invented.
+export function scrubUrl(url: string): string {
+  let parsed: URL;
+  const relative = url.startsWith('/');
+  try {
+    parsed = relative ? new URL(url, 'http://relative.invalid') : new URL(url);
+  } catch {
+    return url;
+  }
+  const kept = new URLSearchParams();
+  for (const [key, value] of parsed.searchParams) {
+    if (KEPT_PARAM.test(key)) kept.append(key, value);
+  }
+  parsed.search = kept.toString();
+  return relative ? `${parsed.pathname}${parsed.search}${parsed.hash}` : parsed.toString();
+}
+
+// What the tracker is about to send: the page's address and the referrer,
+// plus a name and data for an event. Only the two addresses are touched.
+export interface StatsPayload {
+  url?: unknown;
+  referrer?: unknown;
+  [key: string]: unknown;
+}
+
+export function beforeSend<T extends StatsPayload>(_type: string, payload: T): T {
+  const out = { ...payload };
+  if (typeof out.url === 'string') out.url = scrubUrl(out.url);
+  if (typeof out.referrer === 'string') out.referrer = scrubUrl(out.referrer);
+  return out;
+}
+
+export interface Tracker {
+  track(name?: string, data?: Record<string, unknown>): unknown;
+  // Tells the tracker which browser this is, before anything else is
+  // sent: the id rides every record from then on, and the session it
+  // writes carries it.
+  identify?(id: string): unknown;
+}
+
+// The id the server put on the page, or null (a page served without it,
+// the dev server, a browser that asked out).
+export function visitIdFrom(doc: Document): string | null {
+  const meta = doc.querySelector(`meta[name="${VISIT_META}"]`);
+  const value = meta?.getAttribute('content') ?? '';
+  return /^[0-9a-f]{32}$/.test(value) ? value : null;
+}
+
+export interface StatsWindow {
+  umami?: Tracker;
+  [BEFORE_SEND_NAME]?: typeof beforeSend;
+}
+
+// One pace past arriving. Fire and forget, like everything the tracker
+// does: a counter must never be able to hold up the thing it is counting.
+export function trackStep(step: StatsStep, win: StatsWindow = window as StatsWindow): void {
+  try {
+    win.umami?.track(step);
+  } catch {
+    // The tracker's problem, not the page's.
+  }
+}
+
+export function trackMatchEnd(
+  winner: number | null,
+  seconds: number,
+  mode: MatchMode,
+  win: StatsWindow = window as StatsWindow,
+): void {
+  const e = matchEndEvent(winner, seconds, mode);
+  try {
+    win.umami?.track(e.name, e.data);
+  } catch {
+    // The tracker's problem, not the page's.
+  }
+}
+
+// What a match's end is read off, at the moment of asking: the world's
+// winner and its clock.
+export interface MatchState {
+  winner: number | null;
+  seconds: number;
+}
+
+export interface MatchEndReporter {
+  // Says how the match ended, once; every later call is silent.
+  report(): void;
+  // Stops listening for the page going away; report first when the match
+  // is over or being left.
+  dispose(): void;
+}
+
+// The window as the reporter needs it: the tracker, and the page's own
+// lifecycle events.
+export interface ReporterWindow extends StatsWindow {
+  addEventListener?(type: string, listener: () => void): void;
+  removeEventListener?(type: string, listener: () => void): void;
+}
+
+// One end event per match, at the first of three moments: the winner
+// showing (the match was played through, whatever happens to the tab
+// after), the player walking out, or the page going away mid-match. The
+// third is why this exists: the event used to go on the game's own exits
+// only, and seven matches in eight sent nothing because the tab was closed
+// on the end screen or before it. pagehide rather than unload: it is the
+// one that fires on a phone, where a tab is put away rather than closed,
+// and the tracker sends with keepalive, so a report from it leaves with
+// the page.
+export function matchEndReporter(
+  mode: MatchMode,
+  current: () => MatchState,
+  win: ReporterWindow = window as ReporterWindow,
+): MatchEndReporter {
+  return matchEndOnce(
+    current,
+    (state) => trackMatchEnd(state.winner, state.seconds, mode, win),
+    win,
+  );
+}
+
+// The mechanism under the reporter, for anything else a match says once
+// at its end (the practice report, src/net/practice_report.ts): `send` is
+// called with the state as it stands at the first of the three moments,
+// and never again.
+export function matchEndOnce(
+  current: () => MatchState,
+  send: (state: MatchState) => void,
+  win: ReporterWindow = window as ReporterWindow,
+): MatchEndReporter {
+  let sent = false;
+  const report = (): void => {
+    if (sent) return;
+    sent = true;
+    send(current());
+  };
+  win.addEventListener?.('pagehide', report);
+  return {
+    report,
+    dispose: () => win.removeEventListener?.('pagehide', report),
+  };
+}
+
+function browserStore(): StatsStore {
+  return {
+    read: (key) => window.localStorage.getItem(key),
+    write: (key, value) => {
+      window.localStorage.setItem(key, value);
+    },
+    remove: (key) => {
+      window.localStorage.removeItem(key);
+    },
+  };
+}
+
+// Run from the client entry before the tracker sends anything, which the
+// document's script order guarantees: the entry bundle is a module, the
+// tag a deferred script after it, and both run in document order once
+// parsing ends.
+export function installStats(
+  win: StatsWindow = window as StatsWindow,
+  search: string = window.location.search,
+  store: StatsStore = browserStore(),
+  // Read at call time rather than defaulted, so a test without a DOM can
+  // install the hook and the opt-out without one.
+  doc: Document | null = typeof document === 'undefined' ? null : document,
+): void {
+  forgetOldLine(store);
+  applyChoice(store, statsChoice(search));
+  win[BEFORE_SEND_NAME] = beforeSend;
+  // A browser that asked out is not named and sends no view. The tracker
+  // checks the same key before every record of its own, so this is the
+  // second of two locks, not the only one.
+  if (doc && !optedOut(store)) openVisit(win, visitIdFrom(doc));
+}
+
+export function optedOut(store: StatsStore): boolean {
+  try {
+    return store.read(DISABLED_KEY) !== null;
+  } catch {
+    // Storage denied: the tracker cannot read the key either, so it is
+    // going to send. Nothing here can hold a choice it cannot read.
+    return false;
+  }
+}
+
+// The browser is named, then the page view goes out, in that order,
+// because the session is written from the first record the server
+// receives (server/stats_tag.ts turns the tracker's own view off so this
+// one is first).
+//
+// The waiting is on the tracker itself, not on the document. Both scripts
+// are deferred and both run with the document already parsed, so a page
+// that is "ready" says nothing about whether the tracker has run: the
+// first version of this waited for the document, found no tracker there,
+// and sent nothing at all. So it looks for the tracker and comes back
+// every WAIT_MS until it appears, for at most WAIT_TRIES: a page that
+// never loads it (the dev server, a blocker, a self-hosted instance with
+// no counter) simply stops asking.
+export const WAIT_MS = 50;
+export const WAIT_TRIES = 100;
+
+export function openVisit(
+  win: StatsWindow,
+  id: string | null,
+  wait: (fn: () => void, ms: number) => void = (fn, ms) => {
+    setTimeout(fn, ms);
+  },
+): void {
+  let tries = 0;
+  const go = (): void => {
+    const tracker = win.umami;
+    if (!tracker) {
+      if (tries++ < WAIT_TRIES) wait(go, WAIT_MS);
+      return;
+    }
+    try {
+      if (id !== null) tracker.identify?.(id);
+      tracker.track();
+    } catch {
+      // The tracker's problem, not the page's.
+    }
+  };
+  go();
+}

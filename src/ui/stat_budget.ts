@@ -1,0 +1,55 @@
+// The envelope-clamped grant behind the Stat polygon (CONTEXT.md): how
+// far an axis may actually extend. Pure arithmetic on the def, never
+// mutating it, and exact rather than searched, because stat pricing is
+// linear: price times the points above the field's floor (budget.ts).
+// Each polygon spends its own envelope (envelopes.ts): base stats the
+// Stat envelope, growth the Growth envelope, and the kit never buys room
+// in either. Overspending is impossible by construction; when the
+// envelope is already over (a stored draft from before a tightening),
+// every raise resolves to a cut.
+
+import type { ChampionBaseStats, ChampionGrowth } from '../sim/content/champions';
+import { BASE_STAT_BOUNDS, GROWTH_BOUNDS } from '../sim/forge/bounds';
+import { BASE_STAT_PRICES, budgetOf, GROWTH_PRICES } from '../sim/forge/budget';
+import { ENVELOPES, envelopeSpend } from '../sim/forge/envelopes';
+import type { ForgedChampionDef } from '../sim/forge/forged_def';
+
+export type StatGroup = 'base' | 'growth';
+
+// The melee pin and the ranged axis floor are the sim's (stat_fit.ts):
+// the stat conversation's fit holds the same reach the polygon does.
+export { MELEE_REACH, RANGED_MIN } from '../sim/forge/stat_fit';
+
+// The value the envelope actually grants when an axis asks for `want`:
+// clamped to the field's hard bounds first, then pulled back exactly to
+// the group's envelope line when the raise would cross it.
+export function grantStat(
+  def: ForgedChampionDef,
+  group: StatGroup,
+  key: string,
+  want: number,
+): number {
+  const bound =
+    group === 'base'
+      ? BASE_STAT_BOUNDS[key as keyof ChampionBaseStats]
+      : GROWTH_BOUNDS[key as keyof ChampionGrowth];
+  const price =
+    group === 'base'
+      ? BASE_STAT_PRICES[key as keyof ChampionBaseStats]
+      : GROWTH_PRICES[key as keyof ChampionGrowth];
+  if (!bound || price === undefined || !Number.isFinite(want)) return Number.NaN;
+  const have =
+    group === 'base'
+      ? def.base[key as keyof ChampionBaseStats]
+      : def.growth[key as keyof ChampionGrowth];
+  let v = Math.min(bound.max, Math.max(bound.min, want));
+  if (price <= 0) return v;
+  const spend = envelopeSpend(budgetOf(def));
+  const line = group === 'base' ? ENVELOPES.stats : ENVELOPES.growth;
+  const held = group === 'base' ? spend.stats : spend.growth;
+  const total = held + (v - have) * price;
+  if (total > line) {
+    v = Math.max(bound.min, v - (total - line) / price);
+  }
+  return bound.integer ? Math.floor(v) : v;
+}

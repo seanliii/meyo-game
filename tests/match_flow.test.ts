@@ -1,0 +1,236 @@
+// End-to-end match gate, no sockets: a Match wired straight to two
+// ClientWorlds. Commands flow up, team-scoped snapshots flow down, the fog
+// of war holds on the wire, and the mirror world tracks the sim.
+
+import { describe, expect, it } from 'vitest';
+import { Match } from '../server/match';
+import { starOrchard } from '../server/star_orchard';
+import { ClientWorld } from '../src/net/client_world';
+import { STAR_ORCHARD_TOWERS } from '../src/sim/content/star_orchard';
+
+function wire(): { match: Match; a: ClientWorld; b: ClientWorld; step: (n: number) => void } {
+  const match = new Match(7, [
+    { clientId: 1, name: 'alice', team: 0, championId: 'sylra', sigils: ['riftstep', 'mend'] },
+    { clientId: 2, name: 'bob', team: 1, championId: 'fenn', sigils: ['zephyr', 'sear'] },
+  ]);
+  const a = new ClientWorld((msg) => match.handleCommand(1, msg), starOrchard().map);
+  const b = new ClientWorld((msg) => match.handleCommand(2, msg), starOrchard().map);
+  const pa = match.players.get(1)!;
+  const pb = match.players.get(2)!;
+  a.applyServer({ t: 'match_start', selfUnitId: pa.unitId, team: 0 });
+  b.applyServer({ t: 'match_start', selfUnitId: pb.unitId, team: 1 });
+  const step = (n: number): void => {
+    for (let i = 0; i < n; i++) {
+      match.tick();
+      const sa = match.buildSnapshotFor(1);
+      const sb = match.buildSnapshotFor(2);
+      if (sa) a.applyServer(sa);
+      if (sb) b.applyServer(sb);
+    }
+  };
+  return { match, a, b, step };
+}
+
+describe('online match flow', () => {
+  it('carries BOTH teams Boons on the wire, each mirror reading its side', () => {
+    const { match, a, b, step } = wire();
+    match.sim.teamBuffs.grantBoon(1, match.sim.time);
+    step(1);
+    // Team 0's mirror: no own Boon, the enemy's threat visible.
+    expect(a.teamBuff(0)).toBeNull();
+    expect(a.teamBuff(1)?.stacks).toBe(1);
+    // Team 1's mirror: its own Boon, no enemy one.
+    expect(b.teamBuff(1)?.stacks).toBe(1);
+    expect(b.teamBuff(0)).toBeNull();
+  });
+
+  it('applies picks: champion and sigils reach the sim', () => {
+    const { match } = wire();
+    const units = [...match.sim.units.values()].filter((u) => u.kind === 'champion');
+    expect(units.map((u) => u.championId).sort()).toEqual(['fenn', 'sylra']);
+    expect(units.find((u) => u.championId === 'fenn')?.sigils).toEqual(['zephyr', 'sear']);
+  });
+
+  it('never puts a fogged enemy on the wire, and mirrors what is visible', () => {
+    const { match, a, step } = wire();
+    step(1);
+    const pb = match.players.get(2)!;
+    // Enemies sit at their own fountains, far outside vision.
+    expect(a.units.has(pb.unitId)).toBe(false);
+    // Structures are always on the wire.
+    const towers = [...a.units.values()].filter((u) => u.kind === 'tower');
+    expect(towers).toHaveLength(STAR_ORCHARD_TOWERS);
+
+    // Teleport the enemy next to alice: it must appear with full identity.
+    const enemyUnit = match.sim.units.get(pb.unitId)!;
+    const selfUnit = match.sim.units.get(match.players.get(1)!.unitId)!;
+    enemyUnit.pos = { x: selfUnit.pos.x + 4, z: selfUnit.pos.z };
+    step(1);
+    const mirrored = a.units.get(pb.unitId);
+    expect(mirrored).toBeDefined();
+    expect(mirrored?.championId).toBe('fenn');
+    expect(mirrored?.team).toBe(1);
+
+    // And vanish again once it walks back into the fog.
+    enemyUnit.pos = { x: 140, z: 140 };
+    step(1);
+    expect(a.units.has(pb.unitId)).toBe(false);
+  });
+
+  it('moves the champion through the wire and mirrors the motion', () => {
+    const { match, a, step } = wire();
+    step(1);
+    const selfId = a.selfUnitId;
+    const before = { ...a.units.get(selfId)!.pos };
+    a.orderMove(selfId, 30, 30);
+    step(60);
+    const after = a.units.get(selfId)!.pos;
+    const moved = Math.hypot(after.x - before.x, after.z - before.z);
+    expect(moved).toBeGreaterThan(5);
+    // The mirror matches the authoritative sim within rounding.
+    const simPos = match.sim.units.get(selfId)!.pos;
+    expect(Math.abs(after.x - simPos.x)).toBeLessThan(0.02);
+    expect(Math.abs(after.z - simPos.z)).toBeLessThan(0.02);
+  });
+
+  it('mirrors self state: casting spends mana and starts cooldowns', () => {
+    const { match, a, step } = wire();
+    step(1);
+    const selfId = a.selfUnitId;
+    match.sim.units.get(selfId)!.abilityRanks = { Q: 1, W: 1, E: 1, R: 0 };
+    a.castAbility(selfId, 'Q', { x: 20, z: 20 });
+    step(2);
+    const self = a.units.get(selfId)!;
+    expect(self.mana).toBeLessThan(self.maxMana);
+    // Attack damage mirrors too, for the last-hit indicator.
+    expect(self.stats.ad).toBeGreaterThan(0);
+    expect((self.cooldowns.Q ?? 0) > match.sim.time - 1).toBe(true);
+    expect(match.sim.projectiles.size + a.projectiles.size).toBeGreaterThanOrEqual(0);
+  });
+
+  it('mirrors minions once waves spawn, scoped by team vision', () => {
+    const { match, a, step } = wire();
+    step(210);
+    const simMinions = [...match.sim.units.values()].filter((u) => u.kind === 'minion');
+    expect(simMinions).toHaveLength(30);
+    const mirroredMinions = [...a.units.values()].filter((u) => u.kind === 'minion');
+    // Alice sees her own team's 15 minions plus whatever enemy minions are lit.
+    expect(mirroredMinions.length).toBeGreaterThanOrEqual(15);
+    expect(mirroredMinions.length).toBeLessThanOrEqual(30);
+    for (const m of mirroredMinions) {
+      if (m.team === 1) {
+        expect(match.sim.isVisible(0, m.id)).toBe(true);
+      }
+    }
+  });
+
+  it('scopes chat and ping recipients to the sender team', () => {
+    const match = new Match(7, [
+      { clientId: 1, name: 'alice', team: 0, championId: 'sylra', sigils: ['riftstep', 'mend'] },
+      { clientId: 2, name: 'ana', team: 0, championId: 'maera', sigils: ['riftstep', 'mend'] },
+      { clientId: 3, name: 'bob', team: 1, championId: 'fenn', sigils: ['zephyr', 'sear'] },
+    ]);
+    // A ping must never hand the enemy a coordinate: the social layer is
+    // team-scoped exactly like the snapshot layer.
+    expect(match.teamRecipients(1).sort()).toEqual([1, 2]);
+    expect(match.teamRecipients(3)).toEqual([3]);
+    expect(match.teamRecipients(99)).toEqual([]);
+  });
+
+  it('hands a disconnected player seat to a bot that keeps playing', () => {
+    const { match, step } = wire();
+    step(1);
+    const pa = match.players.get(1)!;
+    const unit = match.sim.units.get(pa.unitId)!;
+    const before = { ...unit.pos };
+
+    const left = match.handleDisconnect(1);
+    expect(left).toEqual({ name: 'alice', team: 0, unitId: pa.unitId });
+    // The seat is gone from the wire: no snapshots, no recipients.
+    expect(match.players.has(1)).toBe(false);
+    expect(match.buildSnapshotFor(1)).toBeNull();
+    // The scoreboard row says who this champion was.
+    const score = match.buildScore() as { t: 'score'; rows: { player: string | null }[] };
+    expect(score.rows.some((r) => r.player === 'alice (bot)')).toBe(true);
+    // The champion is not inert: the bot policy walks it out of the fountain.
+    step(200);
+    const moved = Math.hypot(unit.pos.x - before.x, unit.pos.z - before.z);
+    expect(moved).toBeGreaterThan(3);
+    // A second disconnect for the same seat is a no-op.
+    expect(match.handleDisconnect(1)).toBeNull();
+  });
+
+  it('restores a reconnected player seat and detaches the stand-in bot', () => {
+    const { match, step } = wire();
+    step(1);
+    const seat = match.handleDisconnect(1)!;
+    expect(match.sim.policies.has(seat.unitId)).toBe(true);
+    step(20);
+
+    // A new connection presents the reservation and takes the seat back.
+    match.restorePlayer(9, seat);
+    expect(match.sim.policies.has(seat.unitId)).toBe(false);
+    expect(match.players.get(9)?.unitId).toBe(seat.unitId);
+    // Snapshots flow to the new client id again.
+    match.tick();
+    expect(match.buildSnapshotFor(9)).not.toBeNull();
+    // The scoreboard row drops the bot tag.
+    const score = match.buildScore() as { t: 'score'; rows: { player: string | null }[] };
+    expect(score.rows.some((r) => r.player === 'alice')).toBe(true);
+    expect(score.rows.some((r) => r.player === 'alice (bot)')).toBe(false);
+  });
+
+  it('rejects commands for units the client does not own', () => {
+    const { match, b, step } = wire();
+    step(1);
+    const pa = match.players.get(1)!;
+    const aliceUnit = match.sim.units.get(pa.unitId)!;
+    const before = { ...aliceUnit.pos };
+    // Bob's world sends commands as Bob; the server routes them to Bob's
+    // unit, never Alice's, no matter what unit id the client claims.
+    b.orderMove(pa.unitId, 100, 100);
+    step(20);
+    const aliceMoved = Math.hypot(aliceUnit.pos.x - before.x, aliceUnit.pos.z - before.z);
+    expect(aliceMoved).toBe(0);
+  });
+
+  it('tracks idle players for the AFK sweep, reset by commands and rejoins', () => {
+    const { match, step } = wire();
+    step(10);
+    match.handleCommand(1, { t: 'stop' });
+    // Alice just acted, bob has been silent for the whole ten ticks.
+    expect(match.idleClientIds(15)).toEqual([]);
+    step(10);
+    expect(match.idleClientIds(15)).toEqual([2]);
+    expect(match.idleClientIds(5).sort()).toEqual([1, 2]);
+    // A rejoin starts a fresh idle clock instead of being flagged at once.
+    const seat = match.handleDisconnect(2)!;
+    match.restorePlayer(9, seat);
+    expect(match.idleClientIds(15)).toEqual([]);
+  });
+
+  it('streams seatless spectator snapshots on one team fog, self always null', () => {
+    const { match } = wire();
+    expect(match.addSpectator(99, 0)).toBe(true);
+    match.tick();
+    const first = match.buildSpectatorSnapshotFor(99);
+    if (first?.t !== 'snap') throw new Error('no spectator snapshot');
+    expect(first.self).toBeNull();
+    expect(first.units.length).toBeGreaterThan(0);
+    // Identity fields ship once: the second snapshot sends lite records.
+    match.tick();
+    const second = match.buildSpectatorSnapshotFor(99);
+    if (second?.t !== 'snap') throw new Error('no second snapshot');
+    const resent = second.units.filter((u) => u.k !== undefined);
+    expect(resent).toHaveLength(0);
+    // The fog holds for spectators too: exactly what team 0 sees.
+    const playerSnap = match.buildSnapshotFor(1);
+    if (playerSnap?.t !== 'snap') throw new Error('no player snapshot');
+    expect(second.units.map((u) => u.i).sort()).toEqual(playerSnap.units.map((u) => u.i).sort());
+    // Removal stops the stream; the cap refuses a crowd.
+    match.removeSpectator(99);
+    expect(match.buildSpectatorSnapshotFor(99)).toBeNull();
+    for (let i = 0; i < 10; i++) expect(match.addSpectator(200 + i, 1)).toBe(true);
+    expect(match.addSpectator(300, 1)).toBe(false);
+  });
+});

@@ -1,0 +1,349 @@
+// Structural gates. Two of them: src/sim/ stays host-agnostic and
+// deterministic, and no account secret ever leaves the server. Both are
+// scans rather than unit tests on purpose, so they also catch the field
+// somebody adds later without knowing the rule.
+
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path, { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { AccountRegistry, publicAccount, selfAccount } from '../server/accounts';
+import { buildLadder } from '../server/ladder';
+import { buildLadderPage, placeOf } from '../server/ladder_page';
+import { hashPassword } from '../server/password';
+import { buildProfile } from '../server/profile';
+import { SessionStore } from '../server/sessions';
+
+const simDir = fileURLToPath(new URL('../src/sim', import.meta.url));
+const srcDir = fileURLToPath(new URL('../src', import.meta.url));
+
+function simFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...simFiles(full));
+    else if (entry.name.endsWith('.ts')) out.push(full);
+  }
+  return out;
+}
+
+const FORBIDDEN: { re: RegExp; why: string }[] = [
+  { re: /Math\.random/, why: 'sim randomness must go through Rng' },
+  { re: /Date\.now/, why: 'sim time is tick-driven, never wall-clock' },
+  { re: /performance\.now/, why: 'sim time is tick-driven, never wall-clock' },
+  // IEEE 754 pins the four operations, the remainder and the square root;
+  // every other Math function is the engine's own algorithm, and a replay
+  // re-simulates on whatever engine opens it (ADR 0019).
+  {
+    re: /Math\.(hypot|sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|cbrt)\b/,
+    why: 'rounds differently per engine; use src/sim/exact.ts',
+  },
+  { re: /(?<![/*])\*\*(?![/*])/, why: 'the exponent operator rounds differently per engine' },
+  { re: /from\s+'three/, why: 'sim never imports the renderer stack' },
+  { re: /from\s+'[^']*\/(render|ui|net)\//, why: 'sim never imports presentation or network code' },
+  { re: /\b(document|window|navigator)\s*\./, why: 'sim runs outside the DOM' },
+  { re: /\bWebSocket\b/, why: 'sim never touches the network' },
+];
+
+describe('sim architecture', () => {
+  it('keeps src/sim free of DOM, renderer, network, and wall-clock dependencies', () => {
+    const offenders: string[] = [];
+    for (const file of simFiles(simDir)) {
+      const text = readFileSync(file, 'utf8');
+      for (const rule of FORBIDDEN) {
+        if (rule.re.test(text)) offenders.push(`${file}: ${rule.re} (${rule.why})`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('builds every match sim in one place, on the Star Orchard', () => {
+    // ADR 0021: the map every host plays is the export it has read, handed
+    // to src/net/replay.ts. A `new Sim(` anywhere else in src/ is a host
+    // that could play the tests' fixture map by mistake.
+    const offenders = simFiles(srcDir)
+      .filter((file) => !file.startsWith(simDir))
+      .filter((file) => /\bnew Sim\(/.test(readFileSync(file, 'utf8')))
+      .map((file) => path.relative(srcDir, file));
+    expect(offenders).toEqual([path.join('net', 'replay.ts')]);
+  });
+});
+
+// Everything an account holds that must never reach a client. The hash and
+// the salt are the credential; the session id is the credential's
+// equivalent for an open session, and a leaked one is a stolen account
+// until it expires.
+describe('account secrets', () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'loc-arch-')), 'accounts.json');
+  const registry = new AccountRegistry(file);
+  const created = registry.register('bob', 'a good password', 'bob@example.com', 0);
+  if (!created.ok) throw new Error('fixture failed to register');
+  const account = created.value;
+  const sessions = new SessionStore(path.join(path.dirname(file), 'sessions.json'));
+  const session = sessions.create(account.id, 0);
+
+  // Every shape the server serialises out of an account, in one list, so
+  // a new route has an obvious place to be added.
+  const payloads: { what: string; body: unknown }[] = [
+    { what: 'publicAccount', body: publicAccount(account) },
+    {
+      what: '/api/account',
+      body: { ...publicAccount(account), profile: buildProfile([], account.id) },
+    },
+    {
+      what: '/api/me',
+      body: { ...selfAccount(account), profile: buildProfile([], account.id) },
+    },
+    { what: '/api/ladder', body: buildLadder([account]) },
+    { what: '/api/ladder (placed)', body: buildLadder([{ ...account, ratedGames: 10 }]) },
+    {
+      what: '/api/ladder/page',
+      body: buildLadderPage(
+        'hand',
+        [{ id: account.id, accountId: account.id, name: account.name, rating: 1000, games: 10 }],
+        new Map(),
+        account.id,
+      ),
+    },
+    {
+      what: '/api/ladder/mine',
+      body: placeOf(
+        [{ id: account.id, accountId: account.id, name: account.name, rating: 1000, games: 1 }],
+        account.id,
+      ),
+    },
+  ];
+
+  const secrets: { what: string; value: string }[] = [
+    { what: 'password hash', value: account.password!.hash },
+    { what: 'password salt', value: account.password!.salt },
+    { what: 'session id', value: session.id },
+  ];
+
+  it('never serialises a credential or a session id', () => {
+    const leaks: string[] = [];
+    for (const { what, body } of payloads) {
+      const json = JSON.stringify(body);
+      for (const secret of secrets) {
+        if (json.includes(secret.value)) leaks.push(`${what} leaks the ${secret.what}`);
+      }
+      // A whole account object smuggled in under any key would carry the
+      // hash with it, whatever the key is called.
+      if (/"(password|salt|hash|token|sessionId)"/.test(json)) {
+        leaks.push(`${what} carries a credential-shaped key`);
+      }
+    }
+    expect(leaks).toEqual([]);
+  });
+
+  // Two routes sit in front of the wall, and neither may become a
+  // directory of who plays here, which is exactly what the wall exists to
+  // prevent. The landing needs live numbers; the practice match needs to
+  // know what is open, because it runs with no account and still has to
+  // draw the collection wall (ADR 0018). Champion ids and a price table
+  // belong to nobody, so that one is safe for the same reason counts are.
+  it('keeps the public collection route to nobody in particular', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../server/main.ts', import.meta.url)),
+      'utf8',
+    );
+    const route = source.slice(source.indexOf("url === '/api/collection'"));
+    const body = route.slice(0, route.indexOf('return;'));
+    // It may read the caller's own balance and nothing about anyone else.
+    for (const banned of ['registry.all', 'players.values', '.name', 'publicAccount']) {
+      expect(body).not.toContain(banned);
+    }
+    // And a caller with no session is answered rather than refused, or the
+    // practice match would have no wall to draw.
+    expect(body).toContain('STARTER_COLLECTION');
+  });
+
+  it('keeps the public counts route to counts only', () => {
+    const payload = { online: 3, matches: 1, accounts: 42 };
+    expect(Object.keys(payload).sort()).toEqual(['accounts', 'matches', 'online']);
+    for (const value of Object.values(payload)) expect(typeof value).toBe('number');
+    const source = readFileSync(
+      fileURLToPath(new URL('../server/main.ts', import.meta.url)),
+      'utf8',
+    );
+    const route = source.slice(source.indexOf("url === '/api/public/stats'"));
+    const body = route.slice(0, route.indexOf('return;'));
+    for (const banned of ['name', 'handle', 'players.values', 'registry.all']) {
+      expect(body).not.toContain(banned);
+    }
+  });
+
+  // The address is not a credential, so the gate above would let it
+  // through; it is personal data, and it belongs to exactly one person.
+  // The line is between what an account may see about ITSELF and what any
+  // other signed-in player may see about it, which is the whole reason
+  // selfAccount and publicAccount are two functions.
+  it('shows an address to its owner and to nobody else', () => {
+    const address = 'bob@example.com';
+    expect(account.email?.address).toBe(address);
+
+    // Anything another player can ask for.
+    const forOthers: { what: string; body: unknown }[] = [
+      { what: 'publicAccount', body: publicAccount(account) },
+      {
+        what: '/api/account',
+        body: { ...publicAccount(account), profile: buildProfile([], account.id) },
+      },
+      { what: '/api/ladder', body: buildLadder([{ ...account, ratedGames: 10 }]) },
+    ];
+    const leaks: string[] = [];
+    for (const { what, body } of forOthers) {
+      const json = JSON.stringify(body);
+      if (json.includes(address)) leaks.push(`${what} leaks the email address`);
+      if (/"email/.test(json)) leaks.push(`${what} carries an email-shaped key`);
+    }
+    expect(leaks).toEqual([]);
+
+    // And the owner does see it, or the confirmation banner has nothing
+    // to read and this gate would pass by simply losing the feature.
+    const self = selfAccount(account);
+    expect(self.email).toBe(address);
+    expect(self.emailConfirmed).toBe(false);
+    expect(JSON.stringify(self)).not.toContain(account.password!.hash);
+  });
+
+  // A linked Discord is on exactly the same line as the address (ADR
+  // 0008): personal data, the owner's alone. The id is stronger than a
+  // name, since it is the same everywhere on Discord, so it never leaves
+  // the server at all, not even to its owner.
+  it('shows a linked Discord to its owner, the id to nobody', () => {
+    const linked = registry.linkDiscord(account.id, { id: '905512340000', username: 'bo' }, 0);
+    expect(linked.ok).toBe(true);
+    expect(account.discord?.id).toBe('905512340000');
+
+    const forOthers: { what: string; body: unknown }[] = [
+      { what: 'publicAccount', body: publicAccount(account) },
+      {
+        what: '/api/account',
+        body: { ...publicAccount(account), profile: buildProfile([], account.id) },
+      },
+      { what: '/api/ladder', body: buildLadder([{ ...account, ratedGames: 10 }]) },
+    ];
+    const leaks: string[] = [];
+    for (const { what, body } of forOthers) {
+      const json = JSON.stringify(body);
+      if (json.includes('905512340000')) leaks.push(`${what} leaks the Discord id`);
+      if (json.includes('"bo"')) leaks.push(`${what} leaks the Discord name`);
+      if (/"discord/i.test(json)) leaks.push(`${what} carries a Discord-shaped key`);
+    }
+    expect(leaks).toEqual([]);
+
+    const self = JSON.stringify(selfAccount(account));
+    expect(self).toContain('bo');
+    expect(self).not.toContain('905512340000');
+  });
+
+  it('keeps the fixture honest: the secrets really are in the account', () => {
+    // If this ever fails, the gate above is passing for the wrong reason.
+    const raw = JSON.stringify(account);
+    expect(raw).toContain(account.password!.hash);
+    expect(raw).toContain(account.password!.salt);
+    expect(hashPassword('x').hash).not.toBe('');
+  });
+});
+
+// The lines of the `if (...) { ... }` a route dispatch opens: from its own
+// line to the one that closes it. Used by the method gate below, which has
+// to look inside one route's handler and never into the next one's.
+function blockAt(lines: readonly string[], start: number): string {
+  let depth = 0;
+  let opened = false;
+  const out: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    out.push(line);
+    for (const ch of line) {
+      if (ch === '{') {
+        depth++;
+        opened = true;
+      } else if (ch === '}') depth--;
+    }
+    if (opened && depth <= 0) break;
+  }
+  return out.join('\n');
+}
+
+// The third gate: a route that changes something answers POST alone.
+//
+// SameSite=Lax refuses the cross-site POST, which is what makes the cookie
+// safe to carry at all, but it deliberately still carries it on a
+// top-level GET navigation: a link in somebody else's page is a request
+// with the player's session on it. So the method check is not decoration,
+// it is the CSRF boundary, and it lives inline in one 2800-line dispatch
+// where it is easy to forget on the next route.
+//
+// A scan rather than a test per route, so a route added later is refused
+// by default: the allowlist below is the only way to be a GET, and adding
+// a name to it is a deliberate line in a diff rather than an omission.
+describe('api methods', () => {
+  const mainTs = readFileSync(fileURLToPath(new URL('../server/main.ts', import.meta.url)), 'utf8');
+
+  // Routes that read and change nothing, plus the two that must be a GET
+  // because a browser arrives at them by following a link rather than by
+  // sending a form. Both of those carry their own unguessable single-use
+  // credential in the URL (server/action_tokens.ts, server/discord_state.ts),
+  // which is what a method check would otherwise be standing in for.
+  const READ_ONLY = new Set([
+    '/api/me',
+    '/api/collection',
+    '/api/bots',
+    '/api/public/stats',
+    '/api/public/build',
+    '/api/public/landing',
+    '/api/public/presence',
+    '/api/discord/status',
+    '/api/bots/arena',
+    '/api/bots/pool',
+    '/api/forge/drafts',
+    '/api/forge/animations',
+    '/api/forge/job',
+    '/api/forge/art',
+    '/api/gallery',
+    '/api/ladder',
+    '/api/ladder/page',
+    '/api/ladder/mine',
+    '/api/home',
+    '/api/live',
+    // Followed from a mailbox: the token in the link is the credential.
+    '/api/email/confirm',
+    // Followed from the sign-in page into Discord's consent screen; the
+    // state it mints is what the callback checks on the way back.
+    '/api/discord/start',
+  ]);
+
+  it('gates every state-changing /api route on the method', () => {
+    const lines = mainTs.split('\n');
+    // A route is gated if any of its dispatch sites checks the method:
+    // several are named twice, once in the condition and once in the
+    // branch that picks which handler runs.
+    const gated = new Set<string>();
+    const seen = new Set<string>();
+    lines.forEach((line, i) => {
+      const m = /url === '(\/api\/[^']*)'/.exec(line);
+      if (!m?.[1]) return;
+      seen.add(m[1]);
+      // The route's own block, brace-counted, so the check is found
+      // wherever in the handler it sits and a comment between the two
+      // cannot hide it. Bounded by the next route rather than by a line
+      // count, so nothing here is tuned to today's formatting.
+      if (/req\.method/.test(blockAt(lines, i))) gated.add(m[1]);
+    });
+
+    // If this is empty the scan stopped matching the dispatch and the gate
+    // below is passing for the wrong reason.
+    expect(seen.size).toBeGreaterThan(20);
+    const ungated = [...seen].filter((route) => !gated.has(route) && !READ_ONLY.has(route));
+    expect(ungated).toEqual([]);
+  });
+
+  it('keeps the allowlist honest: every name in it is still a route', () => {
+    const stale = [...READ_ONLY].filter((route) => !mainTs.includes(`'${route}'`));
+    expect(stale).toEqual([]);
+  });
+});

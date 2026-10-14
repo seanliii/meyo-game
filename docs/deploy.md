@@ -1,0 +1,557 @@
+# Deploying
+
+This file documents the original `km01` production stack. For a clean
+standalone deploy you can push to your own GitHub and run yourself, use
+`../GITHUB_DEPLOY.md` plus `../docker-compose.standalone.yml` instead.
+
+One image, one process, one port. The game container publishes no port of its
+own: the only way in is the Caddy instance of the km01 stack, reached over the
+shared `km01_edge` Docker network. That is what makes `TRUST_PROXY=1` safe to
+set here, and it keeps this public game server off the network where the
+database and the job queue live.
+
+`docker-compose.yml` at the repo root is the whole deployment. There is no
+Caddy in it: the proxy belongs to the km01 stack, which owns `km01_edge` and
+has to be up first on a fresh box.
+
+## What you need
+
+- A machine with Docker and the compose plugin. The sizing section says how
+  small it can be.
+- The km01 stack running, so `km01_edge` exists and its Caddy is listening on
+  80 and 443. The game vhost lives at the bottom of that stack's `Caddyfile`.
+- A domain whose A record points at the box. Caddy issues and renews the
+  certificate; the game process never sees TLS.
+- No database: accounts, sessions, pending links and the match log are JSON
+  files under `DATA_DIR` (ADR 0006).
+- One external service: a transactional mail provider, called outbound over
+  HTTPS to send confirmation and reset links (ADR 0007). It is optional to
+  run and required to be useful, see below.
+- Optionally a second, a Discord application, for the Continue with Discord
+  button (ADR 0009). Nothing needs it: unconfigured, the button never
+  appears and the rest of the game is unchanged.
+
+## Mail
+
+The game sends exactly two mails: confirm this address, and reset this
+password. Both are outbound HTTPS calls to Resend, so the container still
+publishes no port and still sits off the km01 network. Nothing ever arrives
+by mail; there is no inbox to run.
+
+Set both of these in a `.env` file beside `docker-compose.yml`. That file is
+gitignored, and `MAIL_API_KEY` is a credential: it must never be committed.
+`.env.example` is the template.
+
+```
+MAIL_API_KEY=re_...
+MAIL_FROM=Claude of Legends <no-reply@claudeoflegends.com>
+```
+
+`MAIL_FROM` must be at a domain verified with the provider, which means
+adding the DNS records they give you on `claudeoflegends.com`. Mail from an
+unverified domain is accepted by the API and then not delivered, which looks
+like success in the log and like silence to the player.
+
+`PUBLIC_URL` is what the links point at. It is set in the compose file
+because it is not a secret, and it must be the public name: a link built
+from the container's own address reaches nobody.
+
+**With neither variable set the server does not send mail. It writes the
+links to its own log and says so on the boot line:**
+
+```
+docker compose logs game | grep '^mail:'
+mail: resend, from Claude of Legends <no-reply@claudeoflegends.com>, links point at https://claudeoflegends.com
+```
+
+If that line says `log only`, mail is not configured, nobody can confirm an
+address or reset a password, and the log now contains bearer credentials.
+That is the intended behaviour for a developer and a misconfiguration in
+production.
+
+Delivery is best effort by design. A dead relay never fails a registration:
+the account is created and usable, and the player simply has no link yet.
+
+## Discord sign-in
+
+Optional, and off unless configured (ADR 0009). The entry screen offers one
+button, Continue with Discord: it creates an account from the Discord
+identity that comes back (no name, password or email typed), and afterwards
+the same button signs that account back in. A name-and-password account can
+never be opened through Discord, and nothing stored is ever shown to another
+player.
+
+Make one application at `https://discord.com/developers/applications`, and
+under OAuth2 add a redirect that is exactly the public origin plus
+`/api/discord/callback`:
+
+```
+https://claudeoflegends.com/api/discord/callback
+```
+
+Discord matches that string byte for byte, so a trailing slash or the wrong
+host is a refused exchange and nothing else. Then set both of these in the
+same `.env` file as the mail keys, where `DISCORD_CLIENT_SECRET` is a
+credential and must never be committed:
+
+```
+DISCORD_CLIENT_ID=1234567890
+DISCORD_CLIENT_SECRET=...
+```
+
+The scope requested is `identify` and nothing else. The access token is used
+for one call and then dropped: the account stores the Discord id, the name
+that came back, and when. `DISCORD_REDIRECT_URI` overrides the callback for a
+deployment whose public origin is not `PUBLIC_URL`; it is not normally set.
+
+Optionally, a new account can be put into your Discord server on the way in,
+with no invite to click (ADR 0009). Two more variables turn it on:
+
+```
+DISCORD_BOT_TOKEN=...
+DISCORD_GUILD_ID=1545843596320575559
+```
+
+The token comes from the Bot tab of the same application, and that bot has to
+already be a member of the server with the Create Invite permission and
+nothing else it does not need: add it through OAuth2 > URL Generator with the
+`bot` scope, open the URL it builds, pick the server. The guild id is not a
+secret: turn on Developer Mode in Discord, right click the server, Copy Server
+ID.
+
+Weigh it before turning it on. The consent screen then reads "Join servers for
+you" alongside the username, at the moment somebody is deciding whether to
+sign up at all. Unset, the flow is exactly the identify-only one above and the
+client offers a plain invite link instead. Either way a join that fails never
+costs anybody their account, and an existing member is a no-op.
+
+**With neither variable set the routes answer "not configured", the client
+never offers the button, and the boot line says so:**
+
+```
+docker compose logs game | grep '^discord:'
+discord: sign-in on, redirect https://claudeoflegends.com/api/discord/callback, auto-join into guild 1545843596320575559
+```
+
+The tail of that line is the auto-join: the guild it will add new accounts to,
+or `no auto-join` when the two variables are not both set.
+
+If that line says `off`, Discord sign-in is not configured. Nothing else is
+affected: accounts are created, rated and played exactly as before.
+
+## The audience counter
+
+The site counts its audience with [Umami](https://umami.is), an open source
+counter run beside the game by the same compose file, on the same machine, and
+reached by the browser through the game's own origin. No cookie, nothing per
+person that outlives a month, and nothing leaves the box: `PRIVACY.md` says
+exactly what is kept and `tests/privacy.test.ts` holds the page to the code.
+The dashboard is the ordinary one: visitors and views by day, the pages and
+sections they looked at, where they came from, country, browser and screen,
+who is on the site right now, and the three events the client sends.
+
+It is optional. With the four `STATS_` lines of `.env` empty, `docker compose
+up` starts the game alone and the page goes out without a tag, which is the
+default and the right setting for an instance nobody needs to report on.
+
+To turn it on:
+
+1. In `.env`: `COMPOSE_PROFILES=stats`, and two long random strings for
+   `STATS_DB_PASSWORD` and `STATS_APP_SECRET` (`openssl rand -hex 32` each).
+   Then `docker compose up -d`: the `stats` service (Umami, pinned by digest)
+   and `stats_db` (Postgres, a volume of its own) come up beside the game.
+2. Route the two paths the browser uses, and give the dashboard a name: the
+   proxy block below. Point `stats.your.host` at this machine in DNS, open
+   it, sign in as `admin` with the password `umami`, and change that password
+   before anything else.
+3. In the dashboard, add a website: name it, give it the game's host. Umami
+   shows a website id (a UUID); put it in `.env` as `STATS_WEBSITE_ID` and
+   redeploy the game. The boot line says `stats: on, /visit.js tagged for
+   site ...`, and from then on the entry document carries the tag
+   (`server/stats_tag.ts`).
+
+What the browser loads is two paths on the game's own origin, which the proxy
+hands to the counter's container: `/visit.js`, the tracker script (Umami's
+`TRACKER_SCRIPT_NAME`), and `/api/visit`, where it posts
+(`COLLECT_API_ENDPOINT`). Both are set in `docker-compose.yml`, and a blocker's
+list of tracker names has nothing to match on either. In Caddy, ahead of the
+game's own `reverse_proxy` and with the same forwarding headers, so a visit is
+keyed on the real client and not on the proxy:
+
+```caddyfile
+claudeoflegends.com {
+    # ...
+    handle /visit.js {
+        reverse_proxy claude_of_legends_stats:3000
+    }
+    handle /api/visit {
+        reverse_proxy claude_of_legends_stats:3000 {
+            header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+    handle {
+        reverse_proxy claude_of_legends:8787 {
+            # the game's own block, unchanged
+        }
+    }
+}
+
+stats.claudeoflegends.com {
+    encode zstd gzip
+    reverse_proxy claude_of_legends_stats:3000
+}
+```
+
+Add `/visit.js /api/visit` to the access log's skip list too, so a page load
+stays one line. Then `caddy reload`.
+
+The page's address is reduced before it leaves the browser
+(`src/net/stats.ts`): the path and the section (`/#ladder`) stay, the query is
+dropped except the `utm_` words, so an invite code or a confirmation flag is
+never in the record. Post an announcement with the words on the link,
+`https://your.host/?utm_source=reddit&utm_medium=post`: most apps a link is
+opened from send no referrer, and without them the day reads as direct.
+
+Five events are sent beside the page views, once per page each: `stayed`
+(still here 30 seconds later), `played` (a match started in this browser,
+practice, test drive or live, never a replay), `offer` (the account offer at
+the end of a practice match, taken), `form` (the register tab opened, by hand
+or by the offer) and `account` (an account created, by form or by Discord);
+and one when a match ends for the browser, `finished` (it had a winner, sent
+the moment it does) or `left` (walked out, or the page closed, before one),
+carrying the minutes it ran and whether it was practice or online. Read each against the one before it: `finished` over
+`played` says whether a first match is played through, `offer` over
+`finished` whether the end screen's offer is taken, `form` over `offer`
+whether the landing lands them on the form, and `account` over `form`
+whether the form then loses them. The dashboard's events panel shows them
+against the day's visitors; an event's properties show the minutes, so they
+say how long a match held people.
+
+New against returning is the one thing the counter cannot answer on its own:
+its visitor id is a hash remade every month. The `col_visit` cookie
+(PRIVACY.md, `server/visit_cookie.ts`) is what outlasts that, and it arrives
+as the session's `distinct_id`. One query, run against the counter's
+database:
+
+```bash
+docker exec claude_of_legends_stats_db psql -U umami -d umami -c "
+with first as (
+  select s.distinct_id, min(e.created_at)::date as d0
+  from website_event e join session s using (session_id)
+  where s.distinct_id is not null group by 1
+)
+select e.created_at::date as day,
+  count(distinct s.distinct_id) as browsers,
+  count(distinct s.distinct_id) filter (where f.d0 = e.created_at::date) as new,
+  count(distinct s.distinct_id) filter (where f.d0 < e.created_at::date) as returning
+from website_event e join session s using (session_id) join first f using (distinct_id)
+group by 1 order by 1"
+```
+
+Where they came from is the dashboard's own Referrers panel: a search engine
+sends its domain, so Google, Bing and DuckDuckGo appear by name, and an
+empty referrer is a direct visit, a bookmark, or a link opened inside an app
+like Discord, which sends none. Tag what you post (`?utm_source=reddit`) and
+the Reports, then UTM panel separates them for good.
+
+Your own browser is a visitor like any other, which on a quiet day is most of
+the count. Open the site once with `?stats=off` and it stops being counted, on
+that browser, for good; `?stats=on` puts it back.
+
+The counter's database is dumped into every backup archive as `stats.sql.gz`
+(`scripts/backup_game_data.sh`) when its container is up. Umami's own usage
+report and update check are switched off in the compose file: the counter
+talks to nobody either.
+
+## Who came back
+
+The counters stop at the end of the day they count. Whether anybody
+returned is a different question, and the two files needed to answer it are
+already on disk: an account carries the day it was made and the day it was
+last seen, and every finished match is in the record log with the accounts
+that played it.
+
+```bash
+node scripts/retention.mjs /var/lib/docker/volumes/claude-of-legends_game_data/_data
+```
+
+One row per sign-up day: how many made an account, how many ever played a
+match, and how many played again on a later day. Read the last column
+against the one beside it: `Seen again` comes off the account's `seenAt`,
+which moves in memory on every connection and only reaches disk when
+something else persists, so it can read lower than the match log, which is
+append-only and cannot.
+
+Nothing is collected for this and nothing is written by it. It reads two
+files and prints a table.
+
+## What players ask for
+
+The end screen and the pause menu carry a box asking what to improve, which
+says a single person makes the game (CONTEXT.md: Feedback box). What is
+written lands one line at a time in `feedback.jsonl`, with the match it was
+written in and nothing that names anybody (PRIVACY.md).
+
+```bash
+node scripts/feedback.mjs /var/lib/docker/volumes/claude-of-legends_game_data/_data
+node scripts/feedback.mjs <data dir> 7      the last 7 days only
+```
+
+One block per message, newest last, each headed by the day, whether it came
+from a visitor or an account, and the match behind it.
+
+## What the practice matches say
+
+A practice match runs in the browser and the match log never hears of it.
+Its end sends the server a practice report (PRIVACY.md, one line each in
+`practice.jsonl`): the scoreboard, the result, the minutes, by touch or by
+mouse, visitor or account. The script reads the file and answers the
+question those matches raise: are the house bots the right strength for the
+people who meet them first.
+
+```bash
+node scripts/practice.mjs /var/lib/docker/volumes/claude-of-legends_game_data/_data
+node scripts/practice.mjs <data dir> 30      the last 30 days only
+```
+
+Results and minutes over all, by device and by account; each champion
+played with its win rate, how often it was left, kills, deaths, assists,
+minions a minute, level and minutes; the person's kills and deaths per ten
+minutes beside the ally bots' and the enemy bots'; at what minute people
+leave and how many deaths they had by then; and which enemy bots take the
+most kills. No name is in the file and none is printed.
+
+## What was played
+
+The same log answers the other question the counters cannot: what the ten
+champions actually did on this deployment.
+
+```bash
+node scripts/meta.mjs /var/lib/docker/volumes/claude-of-legends_game_data/_data
+node scripts/meta.mjs <data dir> 30      the last 30 days only
+```
+
+One row per champion, seats and win rate, and beside them the seats a
+person actually played. Read the second pair and not the first: on a real
+deployment the log is mostly the Arena, so the first column is the house
+bots' meta and the second is the game's. `scripts/meta_matrix.mjs` answers
+the simulated version of the same question, style against style on fixed
+seeds; the two disagreeing is worth knowing.
+
+Champion against champion is `scripts/champion_matrix.mjs`: both teams take
+the seed's own lineup and the same house style seat for seat, one seat
+differs, and the win rate left over is that champion's. Add `--mode field`
+for five of each instead, which reads a kit's self-sufficiency rather than
+its balance (a team of five tanks has nothing to kill with). Beside it,
+`scripts/champion_bill.mjs` prints what each kit spends of the Kit envelope,
+the same scale the Forge prices a forged champion on: a champion far under
+the line has power owed to it.
+
+```bash
+node scripts/champion_matrix.mjs --seeds 6      one seat differs, mirrored
+node scripts/champion_bill.mjs                  where the headroom is
+```
+
+A match that was abandoned never reaches the log, so this reports what was
+played through; the server's own log says when a match started and did not
+finish.
+
+## The proxy contract
+
+Caddy overwrites both forwarding headers rather than appending to what the
+client sent, or a player could pick their own bucket and walk around the
+socket cap:
+
+```
+reverse_proxy claude_of_legends:8787 {
+    header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+    header_up X-Real-IP {remote_host}
+    lb_try_duration 30s
+    lb_try_interval 500ms
+}
+```
+
+`server/edge.ts` reads them on that statement, in that order: behind a
+proxying CDN the chain names the player, and with DNS-only records that header
+is absent and `X-Real-IP` (the peer Caddy saw) is the right answer. Changing
+either `header_up` line means rereading `server/edge.ts` first.
+
+The two `lb_` lines are what a visitor sees during a deployment. Recreating the
+container leaves nothing to dial for ten to twenty seconds, and without them
+every request in that window is a 502, which Cloudflare shows as its own "Bad
+gateway" page; that is what the first Reddit visitors met. With them Caddy
+holds the request and keeps trying for up to 30 seconds, so the visitor sees a
+pause and then the page. Cloudflare waits 100 seconds on an origin, so the
+hold is well inside it.
+
+## The link preview
+
+`index.html` carries the OpenGraph and Twitter tags that decide what a link
+to the site looks like when it is posted: Discord, Slack, X, Reddit and every
+search result read those and nothing else. The picture they name is
+`public/social-card.jpg`, 1200 by 630.
+
+Those URLs are absolute, because a scraper has no page to resolve a relative
+one against. A self-hosted instance therefore changes the origin on the
+`og:url`, `og:image` and `twitter:image` lines and nowhere else;
+`tests/social_card.test.ts` fails if the two images stop agreeing, if either
+points somewhere the file is not, or if the declared size stops matching the
+file. Nothing in that block is fetched by a visitor's browser, so it costs
+the privacy promise nothing.
+
+## First deploy
+
+```
+git clone <repo> /opt/claude-of-legends && cd /opt/claude-of-legends
+docker compose up -d --build
+docker compose logs -f game
+```
+
+The image builds the client and bundles the server, so the box needs no Node,
+no pnpm and no toolchain of its own. It does need git-lfs
+(https://git-lfs.com): the announcer's clips under `public/voice/` are LFS
+objects, and a clone made without it ships pointer files in their place (the
+announcer then reads through the browser's speech synthesis; everything else
+works).
+
+## Verify
+
+```
+docker compose ps                      # game should be "healthy"
+curl https://<domain>/healthz          # {"ok":true,...}
+```
+
+The server prints what it believes about its edge on startup, and it should
+read `1 trusted proxy hop(s)`:
+
+```
+docker compose logs game | head -3
+```
+
+If it says 0, `TRUST_PROXY` did not reach the container and every player
+counts as one machine: once the whole server holds `MAX_CONN_PER_IP` sockets
+the next player is refused.
+
+Then the real check, from a machine with Chrome, which drives the whole flow
+(home menu, queue, champion select, lock, a live match) and fails loudly on
+any console error:
+
+```
+node scripts/e2e_online.mjs https://<domain>/ smoke.png
+```
+
+## Updating
+
+```
+git pull
+docker compose up -d --build
+```
+
+The game container is replaced, which ends every live match. There is no drain
+and no rolling restart: deploy when nobody is playing, or accept that players
+are dropped back to the home screen. The data volume survives, so accounts,
+sessions, the match log and the ladder do not reset.
+
+Every open tab reloads onto the new build within a minute, a practice match
+against bots included: the server names the bundle it serves on
+`/api/public/build`, and a client whose own bundle differs shows a three second
+notice and reloads (`src/net/build_watch.ts`). It checks when its socket
+closes, when the tab regains focus, and once a minute otherwise. So a
+deployment reaches everybody, and it interrupts everybody (a visitor arriving
+while the container comes back waits rather than failing, "The proxy
+contract"): the access log says
+when the quiet hours are.
+
+### Deploying the accounts change, once
+
+ADR 0006 replaced the token-keyed identity with real accounts and does not
+migrate what came before: `playerId` became `accountId` inside the persisted
+match record, so the old files are not readable by the new server and the
+ladder restarts. This is a deploy step rather than a commit. With the stack
+stopped, archive them and let the server create its own:
+
+```
+docker run --rm -v claude-of-legends_game_data:/data alpine sh -c \
+  'mkdir -p /data/pre-accounts && mv /data/players.json /data/matches.jsonl /data/pre-accounts/ 2>/dev/null; true'
+```
+
+Take a backup first (below). Nothing is deleted, so the old files stay
+readable if a number is ever needed from them.
+
+## Backups
+
+Everything that outlives a container is in the `claude-of-legends_game_data`
+volume: `accounts.json` (accounts, credentials, email addresses and ratings),
+`sessions.json` (open sign-ins), `tokens.json` (confirmation and reset links
+still outstanding), `matches.jsonl` (the match log that feeds profiles and the
+ladder), `replays/` (the last 40 matches, Arena matches included),
+`forge.sqlite3` (the Forge, ADR 0011), `bots.sqlite3` (the accounts' bots,
+their playbook versions, their live and Arena ratings, the Arena reports and
+the night coach's proposals, ADR 0013). The audience counter's record is a
+volume of its own, `stats_db`, dumped into the same archive as `stats.sql.gz`
+when the counter is up.
+
+The Arena plays its matches in a worker thread bundled beside the server
+(`dist-server/arena_worker.cjs`, built by `pnpm build:server`); a server
+started without that file says so at boot and runs Arena matches inline,
+blocking the live loop for about ten seconds each, which is fine on a dev
+machine and wrong in production.
+
+`accounts.json` holds password hashes and email addresses. The hashes are
+scrypt with a per-account salt, not plaintext, but a backup of it is still a
+credential file AND a list of people's addresses: keep it where you would keep
+one. `tokens.json` is shorter lived and worse: every entry in it is a live way
+into an account until it expires.
+
+```
+docker run --rm -v claude-of-legends_game_data:/data -v "$PWD:/out" \
+  alpine tar czf /out/game-data-$(date +%F).tgz -C /data .
+```
+
+Restoring is the same command with `tar xzf`, into a stopped stack.
+
+## Sizing, measured
+
+One match-tick costs 0.34 ms on a laptop core: the sim step plus ten
+team-scoped snapshots, built and serialized, which is what the server actually
+does 20 times a second per match. Measured with ten concurrent bot matches
+over a minute of game time each.
+
+That puts the process at about 17 ms of CPU per tick at the 50-match cap
+(`MAX_MATCHES` in `server/main.ts`), a third of one core. Two cores is plenty;
+the cap is the honest limit, not the CPU.
+
+Bandwidth is the real constraint. A player receives about 2.3 KB per tick, so
+45 KB/s each. A full house of 50 matches is 500 players, which is roughly
+180 Mbit/s sustained and 80 GB per hour downstream. Check the traffic
+allowance on the plan before advertising the server, and remember that each
+new player also pulls the client once: 24 MB cold, then cached.
+
+Memory: one Sim plus its snapshot state per match, and the whole match log
+stays in memory for profile queries. Kilobytes per match.
+
+## Troubleshooting
+
+**`network km01_edge declared as external, but could not be found`.** The km01
+stack is down or was never brought up on this box. It owns the network; start
+it first.
+
+**Players are refused with "too many connections".** `TRUST_PROXY` is not
+reaching the game container, or Caddy stopped setting the forwarding headers,
+so every socket looks like Caddy's address. Check the startup line described in
+Verify, then the two `header_up` lines in the proxy contract above.
+
+**A browser cannot open a socket but curl can.** The origin check refused the
+upgrade; the server logs `refused upgrade from origin ...`. The page was served
+from a name the request no longer carries, which is what a proxy that rewrites
+`Host` does. Caddy preserves `Host`, and both public names are already in
+`ALLOWED_ORIGINS`, so this bites only when something new has been put in front.
+
+**The certificate never arrives.** Caddy needs port 80 reachable from the
+internet and the DNS record already pointing here. That is the km01 stack's
+log, not this one.
+
+**Everything is slow at the same moment for everyone.** One event loop runs
+every match, so a single expensive tick is felt by all of them. Check
+`/healthz` for the match count first.

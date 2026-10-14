@@ -1,0 +1,220 @@
+# Asset credits and asset licenses
+
+The repository's `LICENSE` covers the project's own source code. Everything
+this repository ships without having written it is recorded here instead:
+media assets, and the one directory of vendored files at the end. Every asset
+under `public/` must have a row in this file before it ships (ADR 0004:
+original naming, no third-party IP; CC0 packs are original art and satisfy it).
+
+## Champion models (`public/models/champions/`)
+
+Rigged, animated GLB characters. All CC0 1.0 (public domain): redistribute
+freely, no attribution required (kept here out of courtesy and provenance).
+The files were optimized (meshopt geometry, KTX2 textures) in the
+world-of-claudecraft asset pipeline; optimization does not change the license
+of CC0 source art.
+
+| Files | Source pack | Author | License |
+|---|---|---|---|
+| `knight.glb`, `barbarian.glb`, `mage.glb`, `rogue_hooded.glb` | KayKit Character Pack: Adventurers (https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | Kay Lousberg (KayKit) | CC0 1.0 |
+| `kk_knight.glb` | ~~KayKit Character Pack: Adventurers Knight (re-export of the CC0 knight body and atlas used for starter-roster variants)~~ Removed 2026-10-11: a previous gate flagged that shipping this file while it sat unreferenced outside CREDITS.md violated ADR 0004; it is no longer bound to any starter (Dain now rides `barbarian.glb`, Ashvyn now rides `rogue_hooded.glb`). | Kay Lousberg (KayKit) | CC0 1.0 |
+| `quaternius/Warrior.glb`, `quaternius/Ranger.glb` | Quaternius RPG Characters (https://quaternius.com/packs/rpgcharacters.html), copied from the CC0 evidence set in `_research/r67_assets/raw/` and re-packed to GLB for the live Dain/Ashvyn replacement pass | Quaternius | CC0 1.0 |
+| `skeleton_rogue.glb` | KayKit Character Pack: Skeletons (https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0) | Kay Lousberg (KayKit) | CC0 1.0 |
+| `ghost.glb`, `goblin.glb`, `glubevolved.glb`, `demonalt.glb`, `velociraptor.glb` | Quaternius animated creature packs (https://quaternius.com, https://poly.pizza/u/Quaternius) | Quaternius | CC0 1.0 |
+| `vesk.glb`, `vesk_rifle.glb` | Generated with Meshy AI (https://meshy.ai) from original Vesk concept art, rigged and animated in the Meshy workspace | killian01 via Meshy AI | Per the Meshy plan's asset terms (CC BY 4.0 on the free plan) |
+| `korrath.glb`, `korrath_shield.glb`, `korrath_maul.glb` | Generated with Meshy AI (https://meshy.ai) from original Korrath concept art (docs/design/portrait-prompts.md), rigged and animated in the Meshy workspace; combat clips re-baked in place (horizontal hip travel removed) and the weapon GLBs re-authored in Blender with the grip at the origin | killian01 via Meshy AI | Per the Meshy plan's asset terms (CC BY 4.0 on the free plan) |
+| `meshy/biped_idle.glb`, `meshy/biped_running.glb`, `meshy/biped_attack.glb`, `meshy/biped_skill_01.glb`, `meshy/biped_dead.glb`, `meshy/biped_hit_flyup.glb`, `meshy/biped_alert.glb` | Generated with Meshy AI (https://meshy.ai) from the project's original biped concept set; kept in-tree as archived candidates after the 2026-10-13 Quaternius swap replaced them on the live Dain/Ashvyn starters | killian01 via Meshy AI | Per the Meshy plan's asset terms (CC BY 4.0 on the free plan) |
+| `sylra.glb` | Generated with Tripo AI (https://www.tripo3d.ai) from original Sylra concept art, the staff a second Tripo generation; regrouped into eight meshes, rigged with Rigify, the staff fitted to her hand and the eight clips authored in Blender, exported by `scripts/export_sylra.py` (docs/sylra-model.md) | killian01 via Tripo AI | Per the Tripo plan's asset terms |
+| `elowen.glb` | Generated with Tripo AI (https://www.tripo3d.ai) from original Elowen concept art as a quad smart mesh with Tripo's rig; segmented into seven meshes in Blender so the skirt, sleeves and hair float on their own bone chains, every clip generated procedurally there, exported by `scripts/export_elowen.py` (docs/elowen-model.md) | killian01 via Tripo AI | Per the Tripo plan's asset terms |
+
+## Minion models (`public/models/minions/`)
+
+Lane creeps and wave bodies. Integrated from Gobkit's public CC0 free pack
+instead of continuing to draw them as procedural primitives, with local GLB
+copies shipped for deterministic builds.
+
+| Files | Source pack | Author | License |
+|---|---|---|---|
+| `gobkit/minion-a01.glb`, `gobkit/minion-a02.glb`, `gobkit/minion-b01.glb`, `gobkit/minion-b02.glb`, `gobkit/minion-c01.glb`, `gobkit/minion-c02.glb`, `gobkit/minion-d01.glb`, `gobkit/minion-d02.glb` | Gobkit Free 3D Assets — Minion Pack (https://github.com/Ariescar/gobkit-free-assets, https://gobkit.com/freebies?ref=github) | Gobkit / Alsomind Tech Co., Ltd. | CC0 1.0 |
+
+## Environment props (`public/models/environment/`)
+
+External map dressing adopted for the 2026-10-13 authored-rift jungle pass:
+kept as local FBX copies so the live map can load the exact reviewed files.
+
+| Files | Source pack | Author | License |
+|---|---|---|---|
+| `kaykit/Tree_5_A_Color1.fbx`, `kaykit/Tree_2_C_Color1.fbx`, `kaykit/Rock_3_A_Color1.fbx`, `kaykit/Bush_1_A_Color1.fbx`, `kaykit/forest_texture_color1.png`, `kaykit/Tree_5_A_Color5.fbx`, `kaykit/Tree_2_C_Color5.fbx`, `kaykit/Rock_3_A_Color5.fbx`, `kaykit/Bush_1_A_Color5.fbx`, `kaykit/forest_texture.png` | KayKit Forest Nature Pack 1.0 from the `assets-kaykit-3d-environments` mirror (https://github.com/GeorgeQLe/assets-kaykit-3d-environments); the Color5 copies were the first warm-pass candidate and Color1 is the live tuned palette after the in-game A/B | Kay Lousberg (KayKit) | CC0 1.0 |
+
+## Spell effects (`public/models/effects/`)
+
+Sylra's authored spell art, exported from the same Blender source as her
+model by `scripts/export_sylra_effects.py` (docs/sylra-model.md): the
+basic-attack seed, the W bramble field, the Q thorn bolt and its burst,
+the E verdant shell and the R overgrowth. Elowen's mist, built in Blender
+by script in her own source file and exported the same way. Original
+geometry; no third-party asset.
+
+| Files | Source | Author | License |
+|---|---|---|---|
+| `sylra_attack_seed.glb`, `sylra_bramble.glb`, `sylra_thorn_bolt.glb`, `sylra_verdant_shell.glb`, `sylra_overgrowth.glb` | Modelled and animated in Blender for this project | killian01 | The repository's `LICENSE` |
+| `elowen_attack_wisp.glb`, `elowen_mist_lance.glb`, `elowen_veil.glb`, `elowen_step.glb`, `elowen_whiteout.glb` | Modelled in Blender for this project by `scripts/build_elowen_effects.py` (layered mist geometry with generated alpha textures), exported by `scripts/export_elowen_effects.py` (docs/elowen-model.md) | killian01 | The repository's `LICENSE` |
+
+## Champion splash art (`public/portraits/`)
+
+Card illustrations for the champion select screen; the resolution chain
+falls back to the in-engine cinematic render when a file is missing
+(docs/design/portrait-prompts.md).
+
+| Files | Source | License |
+|---|---|---|
+| `vesk.webp` | Generated with Google Gemini from original Vesk concept art | Google Gemini output terms |
+| `korrath.webp` | Generated with Google Gemini from the Korrath prompt in docs/design/portrait-prompts.md | Google Gemini output terms |
+| `dain.webp`, `sylra.webp`, `fenn.webp`, `elowen.webp`, `ashvyn.webp`, `maera.webp`, `torv.webp`, `rhoka.webp` | Generated with Google Gemini from the prompts in docs/design/portrait-prompts.md | Google Gemini output terms |
+
+## Tier emblems (`public/icons/tiers/`)
+
+The five tier emblems of the ladder (docs/design/ladder.md), one per tier,
+generated from the prompts in docs/design/tier-emblem-prompts.md; the
+sources stay in `art_src/tiers/`, the black background keyed out at
+conversion.
+
+| Files | Source | License |
+|---|---|---|
+| `recruit.webp`, `regular.webp`, `veteran.webp`, `elite.webp`, `legend.webp` | Generated with Google Gemini from the prompts in docs/design/tier-emblem-prompts.md | Google Gemini output terms |
+
+### Play tile art (`public/art/tiles/`)
+
+The painted scenes behind the home's play tiles (CONTEXT.md: Home),
+one per tile, generated from the prompts in `scripts/tile_art.mjs` and
+described in docs/design/tile-art-prompts.md; the sources stay in
+`art_src/tiles/`.
+
+| Files | Source | License |
+|---|---|---|
+| `ranked.webp`, `bots.webp`, `forge.webp`, `lobby.webp`, `practice.webp` | Generated with the Tripo advanced image task (model `gpt_image_2`) from the prompts in `scripts/tile_art.mjs` | Tripo output terms |
+| `orchard.webp` | The Star Orchard sanctum concept, generated with OpenAI's image model in ChatGPT from the prompt kept beside it in `art_src/map_exports/concepts/`, cropped square | OpenAI output terms |
+
+## The Star Orchard (`public/map/star-orchard/`)
+
+The authored map of the test mode (docs/star-orchard.md): a Blender scene
+built by the maintainer with ChatGPT, exported with its walkability grid and
+gameplay points, and rewritten for the browser by `scripts/import_map.mjs`.
+The model's textures are baked from the scene's own materials; the painted
+tower facade is a generated image. The Blender sources and the raw exports
+stay in `art_src/`.
+
+| Files | Source | License |
+|---|---|---|
+| `map.glb`, `manifest.json`, `navigation.bin`, `gameplay.json` | Original Blender scene by killian01 with ChatGPT; baked textures; the tower facade painting generated with OpenAI's image model | Project license for the scene and exports; OpenAI output terms for the facade painting |
+
+## Logo (`public/icon-*.png`, `public/apple-touch-icon.png`, `public/logo.webp`, `docs/screenshots/logo-readme.webp`)
+
+The mark is a broken gold C closing around a watchtower under a starfield,
+with a four point star in the gap. It comes in two pieces: the crest alone,
+which is what the browser tab, the landing bar and a phone's home screen
+want, and the full lockup, the same crest over the CLAUDE OF LEGENDS
+wordmark, which is the signature the landing page and the README wear.
+
+Both arrive cut out, so `node scripts/site_icon.mjs` only trims each to its
+art, squares the crest and writes the sizes. It repairs two things on the
+way: the generator's opaque is alpha 250 to 254 rather than 255, which
+leaves the art faintly see through, and the lockup ships inside a wide soft
+black glow that reads as a drop shadow here but as a smudge on a light
+page, so its alpha ramp is remapped away. What the remap leaves is a few
+pixels of dark feather, which is right on the navy the site draws the logo
+on and dirty on a white page, so the README gets its own copy of the
+lockup on a navy plate rather than the cut out one: GitHub picks the theme
+of that page, we do not. The tab sizes are packed into one `favicon.ico`,
+three of them, so a browser picks a size rather than downsampling to it.
+The sources stay in `art_src/logo/` (ignored, like the other raw art).
+
+| Files | Source | License |
+|---|---|---|
+| `favicon.ico`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `logo.webp`, `logo-readme.webp` | Generated with ChatGPT (OpenAI image generation), cut by `scripts/site_icon.mjs` | OpenAI output terms |
+
+## Painted ability, item and sigil icons (`public/icons/`)
+
+The 67 paintings that beat the procedural icon painter: every ability
+except Maera's ultimate and Rhoka's four, all 28 items, all four sigils.
+They follow the art contract in docs/design/icon-art-style.md, whose
+subject lines come from our own kit and item records (ADR 0004). The
+generators hand back 512px PNG; what ships is the WebP conversion from
+`scripts/convert_art.mjs`, and the PNG sources stay in `art_src/`.
+
+| Files | Source | License |
+|---|---|---|
+| `abilities/*.webp`, `items/*.webp`, `sigils/*.webp` | Generated with Google Gemini or OpenAI's image model from the prompts built per docs/design/icon-art-style.md | Google Gemini or OpenAI output terms |
+
+## Home backdrop (`public/art/home_end.jpg`)
+
+The still the home screen holds on: the sharpened final frame of the
+generated cinematic that plays once per page load.
+
+| Files | Source | License |
+|---|---|---|
+| `home_end.jpg` | Generated with Google Gemini or OpenAI's image model, sharpened to 1080p | Google Gemini or OpenAI output terms |
+
+## The preview mannequin (`public/models/mannequin/`)
+
+One neutral gray biped with the Forge's whole animation catalog baked onto
+it as geometry-free clip files, so the editor can preview any preset
+instantly and for free. Generated, rigged and baked once by
+`scripts/forge_mannequin.mjs`, which is the only thing in the repo that
+ever pays Tripo for a preview.
+
+| Files | Source | License |
+|---|---|---|
+| `mannequin.glb`, `mannequin.json`, `reference.png`, `clips/*.glb` | Generated and rigged with Tripo (https://tripo3d.ai) by `scripts/forge_mannequin.mjs`, animation presets baked in place | Tripo output terms (paid tier) |
+
+## The recorded sound bank (`public/sfx/`)
+
+Rendered by `scripts/build_sfx.mjs` from recordings published under CC0:
+layered, trimmed, pitched, filtered and mixed into the game's own sounds,
+so what ships is a derivative and not a repackaged pack.
+`public/sfx/CREDITS.md` names every source pack and its recordist, and
+docs/design/sound.md says which game sound each one feeds. CC0 asks for no
+attribution; the list is kept out of respect for the recordists.
+
+| Files | Source | License |
+|---|---|---|
+| `*.ogg` | CC0 packs from Kenney, rubberduck, artisticdude and others, mixed by `scripts/build_sfx.mjs`; the full list is `public/sfx/CREDITS.md` | CC0 1.0 |
+
+## The announcer voice (`public/voice/`)
+
+One clip per line of `src/game/voice_lines.ts`, rendered by
+`scripts/build_voice.mjs` with ElevenLabs text-to-speech in the voice Lucy
+from the ElevenLabs voice library. The words are the game's own; the clips
+are binary and stored with git-lfs. A re-render needs an ElevenLabs API key
+in the environment and nothing else.
+
+| Files | Source | License |
+|---|---|---|
+| `*.mp3` | Generated with ElevenLabs (https://elevenlabs.io), voice Lucy, by `scripts/build_voice.mjs` | ElevenLabs output terms; the rendering account's plan governs commercial use |
+
+## Vendor runtime files (`public/vendor/`)
+
+| Files | What it is | License |
+|---|---|---|
+| `basis/basis_transcoder.js`, `basis/basis_transcoder.wasm` | Basis Universal transcoder shipped with three.js (`three/examples/jsm/libs/basis/`), needed to decode the KTX2 textures inside the champion GLBs | Apache 2.0 (Binomial LLC / Google) |
+
+## Display face (`public/fonts/`)
+
+Cinzel, the face the menu titles and the lockup are set in. Self-hosted
+rather than linked from Google Fonts, because a font on someone else's CDN
+hands that company every visitor's address before a pixel is drawn
+(PRIVACY.md). One variable file per subset, taken from the Google Fonts
+release; the OFL permits redistribution and this is the notice it asks for.
+
+| Files | Source | License |
+|---|---|---|
+| `cinzel-latin.woff2`, `cinzel-latin-ext.woff2` | Cinzel by Natanael Gama (https://fonts.google.com/specimen/Cinzel), the latin and latin-ext subsets of the variable file | SIL Open Font License 1.1 |
+
+## Vendored agent skills (`.claude/skills/`)
+
+Not assets, but the same rule: files this repository ships without having
+written them.
+
+| Files | What it is | License |
+|---|---|---|
+| `domain-modeling/`, `grill-with-docs/`, `grilling/`, `prototype/`, `research/`, `setup-matt-pocock-skills/`, `wayfinder/` | Unmodified copies of Matt Pocock's skills from [`mattpocock/skills`](https://github.com/mattpocock/skills), checked in so a fresh clone gets the same agent setup; the provenance table is `.claude/skills/README.md` | MIT (Matt Pocock), notice at `.claude/skills/LICENSE` |

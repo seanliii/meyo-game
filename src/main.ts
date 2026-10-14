@@ -1,0 +1,1320 @@
+// Client entry: home menu, then either the offline practice sim or the
+// online flow (queue or lobby, champion select, then the mirror world fed by
+// server snapshots). Both paths run the exact same presentation over IWorld,
+// and both come BACK: every exit routes through src/game/flow on the same
+// page. No reload between matches; the menu and a rematch are one click.
+//
+// Every screen that opens over another is a layer of the navigation
+// (src/game/nav.ts, ADR 0020): the browser's Back closes it rather than
+// leaving the site, and a match is guarded, so Back opens the pause menu
+// and closing the tab asks first.
+
+import { type Presentation, startPresentation } from './game/boot';
+import { nextStep, type PostMatchAction } from './game/flow';
+import { registerForgedAssets } from './game/forged_visuals';
+import { requestGameFullscreen } from './game/fullscreen';
+import { parseJoinCode } from './game/invite';
+import { appNav, installNav, sectionFromHash } from './game/nav';
+import { reenterAsAccount } from './game/reentry';
+import { ReplayCursor } from './game/replay_cursor';
+import type { ReplayMark } from './game/replay_marks';
+import { followedSeat } from './game/replay_seat';
+import type { ReplayWorkerIn, ReplayWorkerOut } from './game/replay_worker';
+import { ReplayWorld } from './game/replay_world';
+import { getSettings } from './game/settings';
+import { type SpectatorView, startSpectator } from './game/spectate';
+import {
+  type LoadedOrchard,
+  loadStarOrchardModel,
+  loadStarOrchardTerrain,
+} from './game/star_orchard';
+import { loadStarOrchard } from './game/star_orchard_records';
+import { buildIdFromMeta, startBuildWatch } from './net/build_watch';
+import { ClientWorld } from './net/client_world';
+import { openGuest } from './net/guest';
+import { buildPracticeReport, sendPracticeReport } from './net/practice_report';
+import type { ForgedMatchAssets, ServerMsg } from './net/protocol';
+import {
+  applyReplayEvent,
+  buildMatchSim,
+  expectedCheck,
+  orchardSim,
+  type ReplayEvent,
+  type ReplayRecord,
+  replayPlayable,
+  restorePolicies,
+} from './net/replay';
+import {
+  installStats,
+  type MatchEndReporter,
+  matchEndOnce,
+  matchEndReporter,
+  STAYED_MS,
+  trackStep,
+} from './net/stats';
+import { whenChampionModelsReady } from './render/champions';
+import { installVersionedLoading } from './render/versioned_loading';
+import { attachBot } from './sim/content/bots';
+import { houseSeats } from './sim/content/bots/house';
+import { STARTER_CHAMPION_LIST } from './sim/content/champions';
+import { contentFingerprint } from './sim/content/fingerprint';
+import type { StarOrchard } from './sim/content/star_orchard';
+import type { ForgedChampionDef } from './sim/forge/forged_def';
+import { Rng } from './sim/rng';
+import type { Sim } from './sim/sim';
+import { ULT_RANK_LEVELS } from './sim/stats';
+import { type AbilityKey, DT, type TeamId } from './sim/types';
+import { type AuthedAccount, currentAccount } from './ui/auth';
+import { warmChampionArt } from './ui/champion_art';
+import { buildCoachBar, type CoachBar } from './ui/coach_bar';
+import { type CollectionState, loadCollection } from './ui/collection';
+import { takeDiscordResult } from './ui/discord_entry';
+import { takeConfirmResult } from './ui/email_status';
+import { preloadBackdrop } from './ui/home_backdrop';
+import { HOME_SECTION_KEYS, type HomeChoice, showHome } from './ui/home_screen';
+import { type LandingIntent, showLanding } from './ui/landing';
+import {
+  type BotPick,
+  type CommunityPick,
+  el,
+  type ForgedPick,
+  type LobbyController,
+  type QueueController,
+  type SelectController,
+  screen,
+  showLobby,
+  showNotice,
+  showQueue,
+  showSelect,
+} from './ui/menu';
+import { pendingResetToken, showPasswordReset } from './ui/password_reset';
+import { showReloadNotice } from './ui/reload_notice';
+import { buildReplayBar, type ReplayBar } from './ui/replay_bar';
+import { replayRefusal } from './ui/replay_notice';
+import type { IWorld } from './world_api';
+
+const app = document.querySelector<HTMLElement>('#app');
+if (!app) throw new Error('missing #app root element');
+const container = app;
+
+// The page reloads itself on a new build (src/net/build_watch.ts). Its
+// own bundle is this module's URL, which is the entry chunk in a build and
+// the source file under Vite, where the id is null and nothing reloads.
+const buildWatch = startBuildWatch({
+  own: buildIdFromMeta(document),
+  fetchBuild: () =>
+    fetch('/api/public/build')
+      .then((r) => (r.ok ? (r.json() as Promise<{ build?: unknown }>) : null))
+      .then((info) => (typeof info?.build === 'string' ? info.build : null))
+      .catch(() => null),
+  onNew: () => showReloadNotice(container),
+  everyMs: 60_000,
+});
+window.addEventListener('focus', () => buildWatch.poke());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') buildWatch.poke();
+});
+
+function registerForgedFromMatch(assets: Record<string, ForgedMatchAssets> | undefined): void {
+  for (const [id, a] of Object.entries(assets ?? {})) registerForgedAssets(id, a);
+}
+
+interface OfflinePick {
+  championId: string;
+  sigils: [string, string];
+  skin: number;
+  // A Forge test drive: the draft to register in the offline sim before
+  // picking it (the stylized figure carries the render).
+  forged?: ForgedChampionDef;
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// The map, records and terrain (ADR 0021), then the champion models, behind
+// a card that says how far along they are; null when the map could not be
+// had, after the notice that says why. The records are cached for the
+// page, the model is downloaded once and the champions are usually in by
+// the end of select, so the card is brief on every match but the first.
+// A match is shown only once everything is loaded: nobody plays a
+// procedural figure while a model downloads. forgedIds: the forged
+// champions this match brought, waited on beside the roster's.
+async function loadOrchard(forgedIds: readonly string[] = []): Promise<LoadedOrchard | null> {
+  const { root, card } = screen(container);
+  const line = el('p', 'menu-sub', 'Loading the terrain');
+  card.append(el('h1', 'menu-title', 'Star Orchard'), line);
+  try {
+    const orchard = await loadStarOrchard();
+    const terrain = await loadStarOrchardTerrain(orchard, (fraction) => {
+      line.textContent =
+        fraction >= 1
+          ? 'Preparing the scenery'
+          : `Loading the terrain: ${Math.round(fraction * 100)}%`;
+    });
+    await whenChampionModelsReady(forgedIds, (loaded, total) => {
+      line.textContent = `Loading the champions: ${loaded} / ${total}`;
+    });
+    return { orchard, terrain };
+  } catch (err) {
+    root.remove();
+    await showNotice(
+      container,
+      'Star Orchard unavailable',
+      `The map could not be loaded: ${errorText(err)}`,
+    );
+    return null;
+  } finally {
+    root.remove();
+  }
+}
+
+// The map's records alone, for a host that needs them before it can show a
+// card (the online session, whose queue screen is up); null after the
+// notice.
+async function loadOrchardRecords(): Promise<StarOrchard | null> {
+  try {
+    return await loadStarOrchard();
+  } catch (err) {
+    await showNotice(
+      container,
+      'Star Orchard unavailable',
+      `The map could not be loaded: ${errorText(err)}`,
+    );
+    return null;
+  }
+}
+
+// The practice match draws the same wall as the rest of the game (ADR
+// 0018). It runs offline and may run with no account at all, so it asks
+// the server what is open: signed in, the account's collection; signed
+// out, what a fresh account would hold. Practice was the one place the
+// whole roster stood open, which read as the wall being a punishment for
+// signing up rather than a thing to climb.
+// Resolves null when the select is left without a pick: its Back, or the
+// browser's.
+async function pickForPractice(): Promise<OfflinePick | null> {
+  const collection = await loadCollection();
+  return new Promise((resolve) => {
+    const leave = (): void => {
+      picker.remove();
+      frame.closed();
+      resolve(null);
+    };
+    const picker = showSelect(
+      container,
+      null,
+      0,
+      null,
+      (championId, sigils, skin) => {
+        // Inside the lock-in click gesture, so the browser grants it.
+        requestGameFullscreen();
+        picker.remove();
+        frame.closed();
+        resolve({ championId, sigils, skin });
+      },
+      undefined,
+      undefined,
+      undefined,
+      collection,
+      leave,
+    );
+    // A layer over the page it opened from; Back leaves it with no pick.
+    const frame = appNav().push('select', leave);
+  });
+}
+
+// The account's bots for the classic select (ADR 0013); none when the
+// server is unreachable or the account has none.
+async function fetchBots(): Promise<BotPick[]> {
+  try {
+    const res = await fetch('/api/bots', { credentials: 'same-origin' });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { ok?: boolean; bots?: BotPick[] };
+    return body.ok && Array.isArray(body.bots) ? body.bots : [];
+  } catch {
+    return [];
+  }
+}
+
+// One offline practice match on the Star Orchard; resolves with the exit
+// the player chose.
+// `guest` when no account is behind it: the end screen then makes the
+// account offer (ui/account_offer.ts).
+async function runOffline(pick: OfflinePick, guest = false): Promise<PostMatchAction> {
+  const loaded = await loadOrchard(pick.forged ? [pick.forged.id] : []);
+  if (!loaded) return 'menu';
+  return new Promise((resolve) => {
+    const sim = orchardSim(loaded.orchard, 42);
+    if (pick.forged) sim.addForgedChampion(pick.forged);
+    const world: IWorld = sim;
+    // Practice opens straight into the follow camera, so the player's body
+    // must read cleanly on the spawn terrace instead of being buried under
+    // the four allied fills. Seat the house allies first and the player
+    // last, which gives the player the clear outer pad in the authored
+    // Star Orchard start without changing any match rules.
+    const champions = [];
+    const rng = new Rng(42);
+    const allies = houseSeats(
+      [{ championId: pick.championId, role: pick.forged?.role }],
+      rng,
+      undefined,
+      STARTER_CHAMPION_LIST,
+    );
+    for (const [i, seat] of allies.entries()) {
+      const ally = sim.addChampion(0, undefined, seat.championId, i % 3);
+      attachBot(sim, ally.id, seat.bot);
+      champions.push(ally);
+    }
+    const self = sim.addChampion(0, undefined, pick.championId, pick.skin);
+    self.sigils = [...pick.sigils];
+    champions.push(self);
+    for (const [i, seat] of houseSeats([], rng, undefined, STARTER_CHAMPION_LIST).entries()) {
+      const enemy = sim.addChampion(1, undefined, seat.championId, i % 3);
+      attachBot(sim, enemy.id, seat.bot);
+      champions.push(enemy);
+    }
+    // A Forge test drive opens at the level the ultimate unlocks, everyone
+    // alike: the creator came to try R too, and the bots meet it on equal
+    // footing (playtest).
+    if (pick.forged) {
+      for (const u of champions) sim.setLevel(u.id, ULT_RANK_LEVELS[0]!);
+    }
+
+    let stopped = false;
+    // How it ended, for the counter (src/net/stats.ts): once, at the first
+    // of the winner showing, the walk-out or the tab going away.
+    const ends = matchEndReporter('practice', () => ({
+      winner: world.winner,
+      seconds: world.time,
+    }));
+    // And the practice report (src/net/practice_report.ts): the scoreboard
+    // at that same moment, the one thing the server learns of a match it
+    // never saw run, so the bots' strength can be read off what people
+    // meet. No name rides with it.
+    const practice = matchEndOnce(
+      () => ({ winner: world.winner, seconds: world.time }),
+      (state) =>
+        sendPracticeReport(
+          buildPracticeReport({
+            rows: world.scoreboard(),
+            selfId: self.id,
+            selfTeam: self.team,
+            winner: state.winner,
+            seconds: state.seconds,
+            forged: pick.forged !== undefined,
+            touch:
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(pointer: coarse)').matches,
+            signedIn: !guest,
+          }),
+        ),
+    );
+    const exit = (action: PostMatchAction): void => {
+      if (stopped) return;
+      stopped = true;
+      ends.report();
+      ends.dispose();
+      practice.report();
+      practice.dispose();
+      pres.dispose();
+      layer.closed();
+      resolve(action);
+    };
+    // The match is a guarded layer (src/game/nav.ts): Back opens the pause
+    // menu instead of leaving, and closing the tab asks first. Once the
+    // match has a winner nothing is at stake, and Back returns to the menu
+    // like the end screen's button.
+    const layer = appNav().push('match', () => exit('menu'));
+    layer.guard(() => pres.toggleEscapeMenu());
+    let guarded = true;
+    // A match is on screen, which is as far down the funnel as a visitor
+    // with no account can get. Practice and the Forge test drive both land
+    // here; the replay viewer below deliberately does not, since watching
+    // is not playing.
+    trackStep('played');
+    // A probe for the browser checks (an e2e script ends the match to look
+    // at the end screen), on the dev server only, like the replay's.
+    if (import.meta.env.DEV) {
+      (window as unknown as { __practice?: unknown }).__practice = { sim };
+    }
+    const pres = startPresentation(container, world, self.id, self.team, exit, {
+      terrain: loaded.terrain,
+      guest,
+    });
+    const TICK_MS = DT * 1000;
+    let last = performance.now();
+    let acc = 0;
+    function frame(now: number): void {
+      if (stopped) return;
+      if (guarded && world.winner !== null) {
+        guarded = false;
+        layer.unguard();
+        // Played through, whatever happens to the tab from here.
+        ends.report();
+        practice.report();
+      }
+      // The first frame's timestamp predates the presentation's own setup
+      // (shader compiles, texture uploads: seconds on a slow GPU), which
+      // would leave the clock in debt and the match standing still for as
+      // long; a frame never counts for less than nothing.
+      acc += Math.max(0, Math.min(now - last, 250));
+      last = now;
+      while (acc >= TICK_MS) {
+        const kills: { unitId: number; killerId: number }[] = [];
+        const golds: number[] = [];
+        const casts: { unitId: number; key?: AbilityKey }[] = [];
+        const hits: { targetId: number; amount: number }[] = [];
+        const attacks: { unitId: number; targetId: number }[] = [];
+        for (const ev of sim.tick()) {
+          if (ev.type === 'death') kills.push({ unitId: ev.unitId, killerId: ev.killerId });
+          else if (ev.type === 'gold' && ev.unitId === self.id) golds.push(ev.amount);
+          else if (ev.type === 'cast') casts.push({ unitId: ev.unitId, key: ev.key });
+          else if (ev.type === 'sigil') casts.push({ unitId: ev.unitId });
+          else if (ev.type === 'attack') attacks.push({ unitId: ev.unitId, targetId: ev.targetId });
+          else if (ev.type === 'damage' && ev.sourceId === self.id && ev.targetId !== self.id)
+            hits.push({ targetId: ev.targetId, amount: ev.amount });
+        }
+        pres.onWorldTick({ kills, golds, casts, hits, attacks });
+        acc -= TICK_MS;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// Watch a saved match: rebuild the sim from the record (deterministic, so
+// the whole match is seed plus commands) and run it through the normal
+// presentation behind a read-only world, with a control bar on top.
+// Seeking rides the same determinism plus the world checkpoints a worker
+// ships while the match is played once ahead (src/game/replay_worker.ts):
+// any tick is the nearest checkpoint restored and at most ten seconds
+// stepped, forward or back, and reverse playback walks a denser ring
+// (src/game/replay_cursor.ts). Until the worker has covered a tick, a
+// backward seek falls back to rebuilding from the start, chunked over
+// frames. Opened at a tick when a Match sheet asked for one (a death, a
+// few seconds before): the first seek runs before the first frame.
+// Ticks a replay steps per animation frame while seeking or at top speed.
+const REPLAY_TICKS_PER_FRAME = 400;
+
+// The first event at or after `tick`, for the command cursor after a restore.
+function eventIndexAt(events: readonly ReplayEvent[], tick: number): number {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (events[mid]!.k < tick) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+async function runReplay(source: number, at?: number, follow?: number): Promise<PostMatchAction> {
+  let record: ReplayRecord | null = null;
+  try {
+    const res = await fetch(`/api/replay/${source}`);
+    if (res.ok) record = (await res.json()) as ReplayRecord;
+  } catch {
+    // handled below
+  }
+  const orchard = await loadOrchardRecords();
+  if (!orchard) return 'menu';
+  if (!record || !replayPlayable(record, orchard) || !Array.isArray(record.picks)) {
+    // Before blaming the record, ask the server what it runs: a page
+    // opened before a deploy is the one out of date (src/ui/replay_notice.ts).
+    let server: { version: number; content: string } | null = null;
+    try {
+      const res = await fetch('/api/public/build');
+      if (res.ok) server = (await res.json()) as { version: number; content: string };
+    } catch {
+      // no server, no verdict on the page
+    }
+    const refusal = replayRefusal(record, server, contentFingerprint(orchard));
+    await showNotice(container, refusal.title, refusal.text);
+    return 'menu';
+  }
+  const rec = record;
+  const loaded = await loadOrchard();
+  if (!loaded) return 'menu';
+  return new Promise((resolve) => {
+    const build = (): Sim => buildMatchSim(orchard, rec.seed, rec.picks, rec.forged ?? []).sim;
+    // Unit ids are deterministic too: the first build names the seats and
+    // every rebuild lands the same ids.
+    const { sim: first, unitIds } = buildMatchSim(orchard, rec.seed, rec.picks, rec.forged ?? []);
+    let sim = first;
+    const unitTeams = new Map<number, TeamId>();
+    const seatNames = new Map<number, string>();
+    rec.picks.forEach((p, i) => {
+      unitTeams.set(unitIds[i]!, p.team);
+      seatNames.set(unitIds[i]!, p.name);
+    });
+    // The seat the replay follows (src/game/replay_seat.ts): the unit the
+    // Match sheet asked for, else the first seat that is not a house bot.
+    // Their team, their fog, their story; their deaths are the red marks
+    // on the bar.
+    const viewerIdx = followedSeat(rec.picks, unitIds, follow);
+    const ownUnitId = unitIds[viewerIdx] ?? null;
+    const world = new ReplayWorld(sim, seatNames);
+    // A probe for the tour's camera (scripts/tour_match.mjs reads a unit's
+    // position off it to track a champion), on the dev server only.
+    if (import.meta.env.DEV) {
+      (window as unknown as { __replay?: unknown }).__replay = { world, unitIds };
+    }
+    let stopped = false;
+    let bar: ReplayBar | null = null;
+    // The second pass: the match played once ahead in a worker, a
+    // checkpoint every ten seconds and the marks as they happen.
+    const worker = new Worker(new URL('./game/replay_worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    const marks: ReplayMark[] = [];
+    const finish = (action: PostMatchAction): void => {
+      if (stopped) return;
+      stopped = true;
+      worker.terminate();
+      bar?.dispose();
+      pres.dispose();
+      layer.closed();
+      resolve(action);
+    };
+    // Watching is a layer like any other: Back leaves the replay for the
+    // page it was opened from. Nothing is at stake, so it is not guarded.
+    const layer = appNav().push('replay', () => finish('menu'));
+    const pres = startPresentation(
+      container,
+      world,
+      unitIds[viewerIdx]!,
+      rec.picks[viewerIdx]!.team,
+      finish,
+      { terrain: loaded.terrain },
+    );
+    let speed = 1;
+    let next = 0;
+    // A seek in progress: the tick to reach, stepped silently.
+    let target: number | null = null;
+
+    // The replay checking itself against the match it claims to be: every
+    // CHECK_TICKS the record says where the match stood, and a
+    // re-simulation that has drifted (a sim change nobody bumped the
+    // version for) is caught at the first number that differs. It stops
+    // there and says so: showing a match nobody played is the one thing
+    // a replay must never do.
+    let drifted = false;
+    const checkDrift = (): void => {
+      if (drifted) return;
+      const want = expectedCheck(rec, sim.tickCount);
+      if (want === null || want === sim.checksum()) return;
+      drifted = true;
+      void showNotice(
+        container,
+        'This replay stopped matching',
+        'The game has changed since this match was played, so replaying it no longer plays ' +
+          'out what happened. It stops here rather than showing you a different match; the ' +
+          'result on the Record is what took place.',
+      ).then(() => finish('menu'));
+    };
+
+    // One recorded tick: the commands due, then the sim; the presentation
+    // hears the events only while playing, never while seeking.
+    const stepOnce = (silent: boolean): void => {
+      while (next < rec.events.length && rec.events[next]!.k <= sim.tickCount) {
+        applyReplayEvent(sim, unitTeams, rec.events[next]!);
+        next++;
+      }
+      const kills: { unitId: number; killerId: number }[] = [];
+      const casts: { unitId: number; key?: AbilityKey }[] = [];
+      const attacks: { unitId: number; targetId: number }[] = [];
+      for (const ev of sim.tick()) {
+        if (silent) continue;
+        if (ev.type === 'death') kills.push({ unitId: ev.unitId, killerId: ev.killerId });
+        else if (ev.type === 'cast') casts.push({ unitId: ev.unitId, key: ev.key });
+        else if (ev.type === 'sigil') casts.push({ unitId: ev.unitId });
+        else if (ev.type === 'attack') attacks.push({ unitId: ev.unitId, targetId: ev.targetId });
+      }
+      if (!silent) pres.onWorldTick({ kills, golds: [], casts, hits: [], attacks });
+      checkDrift();
+    };
+
+    const cursor = new ReplayCursor({
+      get sim() {
+        return sim;
+      },
+      step: () => stepOnce(true),
+      restored: (tick) => {
+        next = eventIndexAt(rec.events, tick);
+        // The seats that changed hands before this tick, driven again.
+        restorePolicies(sim, rec.picks, unitIds, rec.events, tick);
+      },
+    });
+    worker.onmessage = (e: MessageEvent<ReplayWorkerOut>): void => {
+      const msg = e.data;
+      if (msg.kind === 'checkpoint') {
+        cursor.addCheckpoint(msg.snapshot);
+        bar?.setCovered(cursor.covered);
+        if (msg.marks.length > 0) {
+          marks.push(...msg.marks);
+          bar?.setMarks(marks, ownUnitId);
+        }
+      } else if (msg.kind === 'done') {
+        marks.push(...msg.marks);
+        bar?.setMarks(marks, ownUnitId);
+        bar?.setCovered(rec.ticks);
+      } else console.error('replay pass failed:', msg.message);
+    };
+    worker.postMessage({ record: rec } satisfies ReplayWorkerIn);
+
+    const seekTo = (tick: number): void => {
+      const t = Math.max(0, Math.min(rec.ticks, Math.round(tick)));
+      if (!cursor.prepare(t)) {
+        // Behind, and no checkpoint covers it yet: from the start.
+        sim = build();
+        next = 0;
+        world.rebind(sim);
+      }
+      target = t;
+    };
+    // One tick either way while paused.
+    const stepBy = (ticks: number): void => {
+      if (target !== null) return;
+      if (ticks > 0) {
+        if (sim.tickCount < rec.ticks) stepOnce(false);
+      } else if (sim.tickCount > 0 && cursor.backTo(sim.tickCount - 1)) {
+        pres.onWorldTick();
+      }
+      bar?.setTime(sim.tickCount, false);
+    };
+    bar = buildReplayBar({
+      ticks: rec.ticks,
+      onSpeed: (m) => {
+        if (m >= 0) cursor.dropRing();
+        speed = m;
+      },
+      onSeek: seekTo,
+      onStep: stepBy,
+      onExit: () => finish('menu'),
+      nameOf: (id) => seatNames.get(id) ?? sim.units.get(id)?.kind ?? `unit ${id}`,
+    });
+    container.appendChild(bar.el);
+    bar.setMarks(marks, ownUnitId);
+    if (at !== undefined && at > 0) seekTo(at);
+
+    const TICK_MS = DT * 1000;
+    let last = performance.now();
+    let acc = 0;
+    function frame(now: number): void {
+      if (stopped) return;
+      if (target !== null) {
+        // Seeking: a slice of ticks per frame, the clock frozen meanwhile;
+        // the presentation catches up once the tick is reached.
+        if (cursor.advance(target, REPLAY_TICKS_PER_FRAME)) {
+          target = null;
+          pres.onWorldTick();
+        }
+        last = now;
+        acc = 0;
+        bar?.setTime(sim.tickCount, target !== null);
+        requestAnimationFrame(frame);
+        return;
+      }
+      if (speed < 0) {
+        // Reverse: the tick to show this frame, restored from the ring.
+        acc += Math.min(now - last, 250) * -speed;
+        last = now;
+        const back = Math.floor(acc / TICK_MS);
+        if (back > 0) {
+          acc -= back * TICK_MS;
+          const t = sim.tickCount - back;
+          if (t <= 0 && sim.tickCount === 0) {
+            speed = 0;
+            bar?.setSpeed(0);
+          } else if (cursor.backTo(Math.max(0, t))) pres.onWorldTick();
+        }
+        bar?.setTime(sim.tickCount, false);
+        requestAnimationFrame(frame);
+        return;
+      }
+      acc += Math.min(now - last, 250) * speed;
+      last = now;
+      // Ten times speed is two hundred ticks a second: bounded per frame
+      // so a slow frame cannot snowball into a stall.
+      let budget = REPLAY_TICKS_PER_FRAME;
+      while (acc >= TICK_MS && sim.tickCount < rec.ticks && budget > 0) {
+        stepOnce(false);
+        acc -= TICK_MS;
+        budget--;
+      }
+      if (budget === 0) acc = 0;
+      // The record's end: freeze (the end overlay is already up if a
+      // winner landed; a truncated record simply stops).
+      if (sim.tickCount >= rec.ticks) acc = 0;
+      bar?.setTime(sim.tickCount, false);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// Watch a live match: a seatless mirror world on one team's fog, driven
+// by the server's spectator snapshot stream.
+async function runSpectate(matchId: number, team: TeamId): Promise<PostMatchAction> {
+  const loaded = await loadOrchard();
+  if (!loaded) return 'menu';
+  return new Promise((resolve) => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+    // Spectators send no orders; the world's sender goes nowhere.
+    const world = new ClientWorld(() => undefined, loaded.orchard.map);
+    let view: SpectatorView | null = null;
+    let finished = false;
+    const finish = (action: PostMatchAction): void => {
+      if (finished) return;
+      finished = true;
+      view?.dispose();
+      view = null;
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ t: 'leave' }));
+        ws.close();
+      }
+      layer.closed();
+      resolve(action);
+    };
+    // Watching a live match is a layer, unguarded: Back leaves it.
+    const layer = appNav().push('spectate', () => finish('menu'));
+    ws.addEventListener('open', () => {
+      // No token on purpose: watching needs no identity, and presenting
+      // one could pull a reserved seat back instead of spectating.
+      ws.send(JSON.stringify({ t: 'hello', name: 'spectator' }));
+      ws.send(JSON.stringify({ t: 'spectate', matchId, team }));
+    });
+    ws.addEventListener('message', (event) => {
+      if (finished) return;
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(String(event.data)) as ServerMsg;
+      } catch {
+        return;
+      }
+      switch (msg.t) {
+        case 'match_start':
+          registerForgedFromMatch(msg.forgedAssets);
+          world.applyServer(msg);
+          break;
+        case 'score':
+          world.applyServer(msg);
+          break;
+        case 'snap': {
+          const changed = world.applyServer(msg);
+          if (!view && world.units.size > 0) {
+            view = startSpectator(container, world, team, () => finish('menu'), loaded.terrain);
+          }
+          if (changed && view) {
+            const kills: { unitId: number; killerId: number }[] = [];
+            const casts: { unitId: number; key?: AbilityKey }[] = [];
+            const attacks: { unitId: number; targetId: number }[] = [];
+            for (const e of msg.events) {
+              if (e.e === 'death') kills.push({ unitId: e.unitId, killerId: e.killerId });
+              else if (e.e === 'cast') casts.push({ unitId: e.unitId, key: e.k });
+              else if (e.e === 'atk') attacks.push({ unitId: e.unitId, targetId: e.targetId });
+            }
+            view.onWorldTick({ kills, golds: [], casts, hits: [], attacks });
+          }
+          break;
+        }
+        case 'match_end':
+          finish('menu');
+          break;
+        case 'error':
+          void showNotice(container, 'Notice', msg.message).then(() => finish('menu'));
+          break;
+        default:
+          break;
+      }
+    });
+    ws.addEventListener('close', () => {
+      // A server that restarted may be a new build: asked first, and the
+      // reload notice takes the screen if so.
+      buildWatch.poke();
+      if (finished) return;
+      void showNotice(container, 'Disconnected', 'Lost the connection to the match.').then(() =>
+        finish('menu'),
+      );
+    });
+  });
+}
+
+// One online session (queue or lobby, select, match); resolves with the
+// exit the player chose, or 'menu' when the connection story ends it.
+// `guest` when a Guest plays it (ADR 0024): the end screen then makes the
+// account offer, as it does after a practice match.
+async function runOnline(choice: HomeChoice, guest = false): Promise<PostMatchAction> {
+  const orchard = await loadOrchardRecords();
+  if (!orchard) return 'menu';
+  // The model downloads while the queue and the select run, so that by the
+  // first snapshot it is usually on hand; the card at the match's door
+  // says how far it is when it is not, and reports a failure there.
+  loadStarOrchardModel(orchard, () => {}).catch(() => undefined);
+  return new Promise((resolve) => {
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+    const world = new ClientWorld((msg) => {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+    }, orchard.map);
+
+    let queueUi: QueueController | null = null;
+    let lobbyUi: LobbyController | null = null;
+    let selectUi: SelectController | null = null;
+    let pres: Presentation | null = null;
+    // How the match ended, for the counter (src/net/stats.ts), while one is
+    // on screen; a queue or a lobby left before one is not a match.
+    let ends: MatchEndReporter | null = null;
+    let coachBar: CoachBar | null = null;
+    let opened = false;
+    let matchEnded = false;
+    let finished = false;
+
+    const clearMenus = (): void => {
+      queueUi?.remove();
+      queueUi = null;
+      lobbyUi?.remove();
+      lobbyUi = null;
+    };
+
+    // The one way out, whatever the path in: menus down, presentation
+    // disposed, and the seat given up FOR GOOD. The explicit 'leave' tells
+    // the server this is a walk-out, not a dropped connection, so no rejoin
+    // reservation is held; an accidental close keeps the reservation and
+    // the player reconnects through "Play online".
+    const finish = (action: PostMatchAction): void => {
+      if (finished) return;
+      finished = true;
+      ends?.report();
+      ends?.dispose();
+      ends = null;
+      clearMenus();
+      selectUi?.remove();
+      selectUi = null;
+      pres?.dispose();
+      pres = null;
+      coachBar?.remove();
+      coachBar = null;
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ t: 'leave' }));
+        ws.close();
+      }
+      layer.closed();
+      resolve(action);
+    };
+    // The whole session is one layer (src/game/nav.ts). In the queue or
+    // the lobby, Back is the Cancel or Leave button. From champion select
+    // on it is guarded: the team's clock is running and a seat is held, so
+    // Back does nothing in select, opens the pause menu in the match, and
+    // closing the tab asks first. The end screen lifts the guard: Back is
+    // then Return to menu.
+    const layer = appNav().push('session', () => finish('menu'));
+
+    // The presentation opens once the terrain is parsed and the champion
+    // models are in: at once when they are on hand, behind the loading
+    // card while they are still coming. The forged champions of the
+    // match are named by match_start, before the first snapshot.
+    let opening = false;
+    let forgedIds: string[] = [];
+    let droppedIn = false;
+    const openPresentation = async (): Promise<void> => {
+      const loaded = await loadOrchard(forgedIds);
+      if (finished) return;
+      if (!loaded) {
+        finish('menu');
+        return;
+      }
+      // The live match, the other half of the pace the practice match
+      // reports above.
+      trackStep('played');
+      const opened = startPresentation(container, world, world.selfUnitId, world.selfTeam, finish, {
+        terrain: loaded.terrain,
+        mode: 'online',
+        guest,
+      });
+      pres = opened;
+      ends = matchEndReporter('online', () => ({ winner: world.winner, seconds: world.time }));
+      layer.guard(() => pres?.toggleEscapeMenu());
+      // A coach seat (ADR 0013): the bar for the orders with no place to
+      // click; right-click already goes and focuses through the mirror.
+      if (world.coach) {
+        coachBar = buildCoachBar(container, (kind) =>
+          ws.send(JSON.stringify({ t: 'order', kind })),
+        );
+      }
+      opened.setNetHooks({
+        sendChat: (text) => ws.send(JSON.stringify({ t: 'chat', text })),
+        sendPing: (x, z) => ws.send(JSON.stringify({ t: 'ping', x, z })),
+      });
+      // A bot's seat in a match under way (ADR 0025): say so, since the
+      // champion was not picked and the clock is not at zero.
+      if (droppedIn) {
+        opened.pushChat(
+          'System',
+          world.selfTeam,
+          'You joined a match in progress, in place of a bot. Good luck.',
+        );
+      }
+    };
+
+    // What this account may pick (ADR 0018), fetched the moment the
+    // session opens so the wall is drawn with the first paint of select
+    // rather than appearing under the cursor a moment later. A failure
+    // answers null, which draws no wall: the server refuses the pick
+    // anyway, and a locked card nobody can explain is worse than none.
+    const collectionState: Promise<CollectionState | null> = loadCollection();
+
+    // The Forge queue's select offers the account's finalized creations
+    // and the community's shared ones: both fetched the moment the session
+    // opens so the lists are ready (or nearly) when select_start lands;
+    // the handler awaits them either way.
+    const forgedRoster: Promise<ForgedPick[]> =
+      choice.mode === 'forge-queue'
+        ? fetch('/api/forge/drafts', { credentials: 'same-origin' })
+            .then((res) => (res.ok ? res.json() : { drafts: [] }))
+            .then(
+              (body: {
+                drafts?: {
+                  def: ForgedChampionDef;
+                  status: string;
+                  splash?: string | null;
+                  model?: string | null;
+                  family?: string | null;
+                  display?: import('./sim/forge/display').ForgedDisplay | null;
+                  icons?: Record<string, string> | null;
+                }[];
+              }) =>
+                (body.drafts ?? [])
+                  .filter((d) => d.status === 'finalized')
+                  .map((d) => {
+                    registerForgedAssets(d.def.id, d);
+                    return { def: d.def, splash: d.splash ?? null };
+                  }),
+            )
+            .catch(() => [])
+        : Promise.resolve([]);
+    const communityList: Promise<CommunityPick[]> =
+      choice.mode === 'forge-queue'
+        ? fetch('/api/gallery?playable=1&sort=popular', { credentials: 'same-origin' })
+            .then((res) => (res.ok ? res.json() : { entries: [] }))
+            .then((body: { entries?: (CommunityPick & { mine?: boolean })[] }) => {
+              for (const e of body.entries ?? []) registerForgedAssets(e.def.id, e);
+              // Own champions already sit in their own section.
+              return (body.entries ?? []).filter((e) => e.mine !== true);
+            })
+            .catch(() => [])
+        : Promise.resolve([]);
+
+    ws.addEventListener('open', () => {
+      opened = true;
+      // No identity to send: the session cookie rode the upgrade, and the
+      // server refused it outright if there was none (ADR 0006). hello only
+      // asks whether a live match is still holding our seat.
+      ws.send(JSON.stringify({ t: 'hello' }));
+      if (choice.mode === 'queue' || choice.mode === 'forge-queue') {
+        ws.send(
+          JSON.stringify({ t: 'queue', ...(choice.mode === 'forge-queue' ? { forge: true } : {}) }),
+        );
+        queueUi = showQueue(
+          container,
+          () => ws.send(JSON.stringify({ t: 'start_now' })),
+          () => finish('menu'),
+        );
+      } else if (choice.mode === 'create') {
+        ws.send(JSON.stringify({ t: 'create_lobby' }));
+        lobbyUi = showLobby(
+          container,
+          () => ws.send(JSON.stringify({ t: 'start_lobby' })),
+          () => finish('menu'),
+          (team) => ws.send(JSON.stringify({ t: 'lobby_team', team })),
+          () => ws.send(JSON.stringify({ t: 'queue_party' })),
+        );
+      } else if (choice.mode === 'join' && choice.code) {
+        ws.send(JSON.stringify({ t: 'join_lobby', code: choice.code }));
+        lobbyUi = showLobby(
+          container,
+          () => undefined,
+          () => finish('menu'),
+          (team) => ws.send(JSON.stringify({ t: 'lobby_team', team })),
+          () => undefined,
+        );
+      }
+    });
+
+    ws.addEventListener('message', (event) => {
+      if (finished) return;
+      let msg: ServerMsg;
+      try {
+        msg = JSON.parse(String(event.data)) as ServerMsg;
+      } catch {
+        return;
+      }
+      switch (msg.t) {
+        case 'queue_status':
+          // A lobby that queued as a party gets queue updates: swap the
+          // lobby screen for the queue screen the first time one lands.
+          if (lobbyUi && !queueUi) {
+            lobbyUi.remove();
+            lobbyUi = null;
+            queueUi = showQueue(
+              container,
+              () => ws.send(JSON.stringify({ t: 'start_now' })),
+              () => finish('menu'),
+            );
+          }
+          queueUi?.setStatus(msg.count, msg.needed, msg.startsIn, msg.ready);
+          break;
+        case 'lobby':
+          lobbyUi?.update(msg.code, msg.host, msg.team, msg.players);
+          break;
+        case 'select_start': {
+          clearMenus();
+          layer.guard(() => undefined);
+          const openSelect = (
+            forgedList: readonly ForgedPick[],
+            community: readonly CommunityPick[],
+            botsList: readonly BotPick[] = [],
+            collection: CollectionState | null = null,
+          ): void => {
+            if (finished || selectUi) return;
+            selectUi = showSelect(
+              container,
+              msg.players,
+              msg.team,
+              msg.deadline,
+              (champ, sigils, skin, botId) => {
+                // Inside the lock-in click gesture, so the browser grants it.
+                requestGameFullscreen();
+                ws.send(
+                  JSON.stringify({
+                    t: 'pick',
+                    championId: champ,
+                    sigils,
+                    skin,
+                    ...(botId ? { bot: botId } : {}),
+                  }),
+                );
+              },
+              forgedList,
+              community,
+              botsList,
+              collection,
+            );
+          };
+          // A Forge select waits for the forged lists (already in flight
+          // since the session opened); a classic select opens on the spot.
+          if (msg.forge) {
+            void Promise.all([forgedRoster, communityList, collectionState]).then(
+              ([own, community, collection]) => openSelect(own, community, [], collection),
+            );
+          } else {
+            // The classic select offers the account's bots (ADR 0013).
+            void Promise.all([fetchBots(), collectionState]).then(([bots, collection]) =>
+              openSelect([], [], bots, collection),
+            );
+          }
+          break;
+        }
+        case 'select_update':
+          selectUi?.setLocked(msg.locked, msg.total, msg.taken);
+          break;
+        case 'chat':
+          pres?.pushChat(msg.from, msg.team, msg.text);
+          break;
+        case 'player_left':
+          pres?.pushChat('System', msg.team, `${msg.name} disconnected; a bot takes over.`);
+          break;
+        case 'player_back':
+          pres?.pushChat('System', msg.team, `${msg.name} reconnected.`);
+          break;
+        case 'player_joined':
+          pres?.pushChat('System', msg.team, `${msg.name} joined the match.`);
+          break;
+        case 'ping':
+          pres?.showPing(msg.x, msg.z, msg.from, msg.team);
+          break;
+        case 'welcome':
+          // The server names the account this socket belongs to; nothing to
+          // store, the cookie is the identity.
+          break;
+        case 'match_start':
+          registerForgedFromMatch(msg.forgedAssets);
+          forgedIds = Object.keys(msg.forgedAssets ?? {});
+          droppedIn = msg.dropIn === true;
+          world.applyServer(msg);
+          // A rejoin can arrive while the queue or lobby screen is still up.
+          clearMenus();
+          selectUi?.remove();
+          selectUi = null;
+          break;
+        case 'snap': {
+          const changed = world.applyServer(msg);
+          if (!pres && !opening && world.selfUnitId !== 0 && world.units.has(world.selfUnitId)) {
+            opening = true;
+            void openPresentation();
+          }
+          // The snapshot carries the winner: played through, whatever
+          // happens to the tab from here.
+          if (world.winner !== null) ends?.report();
+          if (changed) {
+            // The coached bot answers through its snapshot: the order it holds
+            // and the play it is running.
+            const me = world.units.get(world.selfUnitId);
+            if (me) coachBar?.update(me.coachOrder, me.play);
+            const kills: { unitId: number; killerId: number }[] = [];
+            const golds: number[] = [];
+            const casts: { unitId: number; key?: AbilityKey }[] = [];
+            const hits: { targetId: number; amount: number }[] = [];
+            const attacks: { unitId: number; targetId: number }[] = [];
+            for (const e of msg.events) {
+              if (e.e === 'death') kills.push({ unitId: e.unitId, killerId: e.killerId });
+              else if (e.e === 'gold') golds.push(e.amount);
+              else if (e.e === 'cast') casts.push({ unitId: e.unitId, key: e.k });
+              else if (e.e === 'atk') attacks.push({ unitId: e.unitId, targetId: e.targetId });
+              else if (e.e === 'dmg') hits.push({ targetId: e.targetId, amount: e.amount });
+            }
+            pres?.onWorldTick({ kills, golds, casts, hits, attacks });
+          }
+          break;
+        }
+        case 'score':
+          world.applyServer(msg);
+          break;
+        case 'match_result':
+          pres?.setMatchResult(msg.rated, msg.delta, msg.rating, msg.queue, msg.way);
+          break;
+        case 'match_end':
+          // The end overlay (stats, Play again, Return to menu) owns the way
+          // out; without a presentation there is nothing to look at, go home.
+          matchEnded = true;
+          layer.unguard();
+          if (!pres) finish('menu');
+          break;
+        case 'error': {
+          // Pre-game refusals (bad lobby code, closed lobby) must reach the
+          // player, not the console: clear whichever menu is up and say it.
+          // Mid-match, a server verdict (removed for inactivity) ends the
+          // session: tear down first, then explain over the home screen.
+          console.warn('server:', msg.message);
+          const message = msg.message;
+          if (!pres) {
+            clearMenus();
+            selectUi?.remove();
+            selectUi = null;
+            void showNotice(container, 'Notice', message).then(() => finish('menu'));
+          } else {
+            finish('menu');
+            void showNotice(container, 'Notice', message);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    });
+
+    ws.addEventListener('close', () => {
+      // A server that restarted may be a new build: asked first, and the
+      // reload notice takes the screen if so.
+      buildWatch.poke();
+      // A close after the match ended is the server reaping the room, not a
+      // failure; the end screen is already up. A close after finish() is
+      // this client hanging up on purpose.
+      if (finished || matchEnded) return;
+      if (!opened) {
+        void showNotice(
+          container,
+          'Server unreachable',
+          'Could not reach the game server. Start it in another terminal with "pnpm server" ' +
+            '(keep it running), restart "pnpm dev" if it predates vite.config.ts, then try again.',
+        ).then(() => finish('menu'));
+      } else {
+        void showNotice(
+          container,
+          'Disconnected',
+          'Lost the connection to the server. If you were in a match, hit "Play online" from ' +
+            'the menu: your champion is waiting.',
+        ).then(() => finish('menu'));
+      }
+    });
+  });
+}
+
+async function boot(): Promise<void> {
+  // Every address the renderer's loaders fetch carries the build's stamp
+  // (src/game/asset_version.ts), before the first model is asked for.
+  installVersionedLoading();
+  // Load and apply the stored player settings before any audio plays.
+  getSettings();
+  // The audience counter (src/net/stats.ts): the opt-out asked for in the
+  // address bar, and the hook that strips an address before the tracker
+  // sends it. Before anything else, so it is in place when the tracker's
+  // deferred tag runs after this module.
+  installStats();
+  // Half a minute later, if this page is still in front of somebody: the
+  // line between a visitor who looked and a click that left before the
+  // art had drawn. A tab in the background does not count: nobody is
+  // looking at it.
+  window.setTimeout(() => {
+    if (!document.hidden) trackStep('stayed');
+  }, STAYED_MS);
+  // The section the address names (#ladder), read before the navigation
+  // takes the address over: a reload in a section lands back in it.
+  let startSection = sectionFromHash(window.location.hash, HOME_SECTION_KEYS);
+  // An invite link (?join=CODE) deep-links into the friend's lobby: with a
+  // stored name we go straight in; a first-time visitor gets the home
+  // screen with the code prefilled. Consumed once, so reloads stay home.
+  let joinCode = parseJoinCode(window.location.search);
+  if (joinCode !== null) window.history.replaceState(null, '', window.location.pathname);
+  // From here on the browser's history mirrors the screens (ADR 0020):
+  // this page is the root, and everything that opens over it is a layer.
+  installNav();
+  // The landing art is the first thing on screen; ask for it before the
+  // session check so the two requests fly together.
+  preloadBackdrop();
+  // A reset link stands in front of everything, session or not: the whole
+  // premise is that this person cannot sign in. Completing one revokes
+  // every session the account had, so the check below then finds none.
+  const resetToken = pendingResetToken();
+  if (resetToken !== null) await showPasswordReset(container, resetToken);
+  // What a confirmation link redirected back with, if this load came from
+  // one. Read once, shown once, on the first home screen of the session.
+  // A round trip through Discord reports itself the same way (ADR 0009),
+  // and is read first only because both of them rewrite the address bar.
+  // A successful one arrives with a session already open, so only the
+  // failures ever have a screen to land on: the entry page shows them.
+  let discordResult = takeDiscordResult();
+  // An account made through Discord arrives as a flag on the address;
+  // the form's own signup reports itself (src/ui/auth.ts).
+  if (discordResult === 'created' || discordResult === 'joined') trackStep('account');
+  let confirmed = takeConfirmResult();
+  // The app loop: home, one match, back, forever on the same page. 'again'
+  // replays the same offline pick or re-enters the public queue (flow.ts).
+  let next: HomeChoice | null = null;
+  // A replay opened from the Academy returns there, on the same bot.
+  let reopenAcademy: { botId: string } | null = null;
+  let lastPick: OfflinePick | null = null;
+  // Who is signed in, or null while only the offline match is reachable.
+  // A live session cookie from a previous visit skips the sign-in screen.
+  // Decided once per page load and never again: signing in reloads the
+  // page rather than changing this out from under everything.
+  const account: AuthedAccount | null = await currentAccount();
+  // The roster's illustrations, so the select screen opens with its cards
+  // whole rather than filling in one by one.
+  warmChampionArt();
+  // Why the landing comes back, when it does: the account offer taken at
+  // the end of a practice match opens it on the register tab.
+  let landingIntent: LandingIntent | null = null;
+
+  for (;;) {
+    // The way in (ADR 0006): everything but the offline practice match
+    // needs an account, so the sign-in screen stands in front of the home
+    // screen rather than beside it. An invite code survives the detour and
+    // lands in the join field on the other side.
+    if (account === null) {
+      const entry = await showLanding(container, discordResult, landingIntent);
+      landingIntent = null;
+      if (entry.kind === 'account') {
+        // Signing in starts the page over rather than swapping the home
+        // screen in over the landing (game/reentry.ts): the session
+        // cookie is set by now, so the boot on the other side comes back
+        // with the account and skips this screen. Nothing below runs.
+        reenterAsAccount({ joinCode, confirmed });
+        return;
+      }
+      // The public queue as a Guest (ADR 0024): Play again queues again,
+      // anything else is back to the way in. No server to hand out a Guest
+      // falls through to the offline match below, which needs none.
+      if (entry.kind === 'guest') {
+        const guestName = await openGuest();
+        if (guestName !== null) {
+          let action: PostMatchAction = 'again';
+          while (action === 'again') {
+            action = await runOnline({ name: guestName, mode: 'queue' }, true);
+          }
+          if (action === 'account') landingIntent = 'register';
+          continue;
+        }
+      }
+      // Offline: one match against bots, then back to the way in. A select
+      // left without a pick is back to the way in too. The end screen's
+      // Play again replays the same pick without a second select, the same
+      // way the guest queue below requeues on 'again' — a visitor who asks
+      // for another match gets one instead of the landing page.
+      const pick: OfflinePick | null = lastPick ?? (await pickForPractice());
+      if (!pick) continue;
+      lastPick = pick;
+      let action: PostMatchAction = await runOffline(pick, true);
+      while (action === 'again') {
+        action = await runOffline(pick, true);
+      }
+      if (action === 'account') landingIntent = 'register';
+      continue;
+    }
+    if (joinCode !== null) next = { name: account.name, mode: 'join', code: joinCode };
+    const choice: HomeChoice =
+      next ??
+      (await showHome(
+        container,
+        account,
+        joinCode ?? undefined,
+        confirmed,
+        discordResult,
+        reopenAcademy,
+        startSection,
+      ));
+    reopenAcademy = null;
+    startSection = null;
+    confirmed = null;
+    discordResult = null;
+    joinCode = null;
+    next = null;
+    let action: PostMatchAction;
+    if (choice.mode === 'practice') {
+      // A Forge test drive arrives with its draft; a plain practice run
+      // goes through champion select as always.
+      let pick: OfflinePick;
+      if (choice.forged) {
+        pick = {
+          championId: choice.forged.id,
+          sigils: ['riftstep', 'mend'],
+          skin: 0,
+          forged: choice.forged,
+        };
+      } else if (lastPick) {
+        pick = lastPick;
+      } else {
+        const chosen = await pickForPractice();
+        // Left the select without a pick: back to the home.
+        if (!chosen) continue;
+        pick = chosen;
+      }
+      lastPick = pick;
+      action = await runOffline(pick);
+    } else if (choice.mode === 'replay' && choice.replayId !== undefined) {
+      action = await runReplay(choice.replayId, choice.replayAt, choice.replayFollow);
+    } else if (choice.mode === 'spectate' && choice.matchId !== undefined) {
+      action = await runSpectate(choice.matchId, choice.team === 1 ? 1 : 0);
+    } else {
+      action = await runOnline(choice);
+    }
+    reopenAcademy = choice.academy ?? null;
+    const step = nextStep(action, choice.mode);
+    if (step === 'replay') {
+      next = choice;
+    } else if (step === 'requeue') {
+      // Play again re-enters the queue the match came from.
+      next = {
+        name: choice.name,
+        mode: choice.mode === 'forge-queue' ? 'forge-queue' : 'queue',
+      };
+    } else {
+      lastPick = null;
+    }
+  }
+}
+
+void boot();

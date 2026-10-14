@@ -1,0 +1,914 @@
+// Behavior execution: a play's macro intent turned into one action through
+// the shared micro. A behavior that cannot act this slot returns null and
+// the interpreter moves on to the next play. Every default below is the
+// number the scripted Laner shipped with (see micro.ts for the findings
+// that set them); the playbook overrides them per play.
+
+import { GOTO_DONE_RADIUS } from '../coach';
+import { CAMP_FIRST_SPAWN_S, CAMPS } from '../content/camps';
+import { CHAMPIONS, type ChampionRole } from '../content/champions';
+import { hypot } from '../exact';
+import type { Action, ObsCamp, ObsCreature, Observation, ObsUnit } from '../policy';
+import { nextKitStep } from './kit';
+import {
+  BESIDE_RANGE,
+  CAST_RANGE,
+  CHAMPION_ATTACK_RANGE,
+  CHASE_RANGE,
+  dist,
+  ESCORT_MIN,
+  FARM_RANGE,
+  FIGHT_TARGET_RADIUS,
+  hardCCd,
+  homewardPoint,
+  JOIN_RANGE,
+  KILL_SECURE_HP_FRAC,
+  KITE_APPROACH,
+  KITE_DANGER_FRAC,
+  KITE_STEP,
+  laneDistance,
+  nearest,
+  pickCast,
+  RANGED_MIN_RANGE,
+  RECALL_MIN_HOME_DIST,
+  REGROUP_AT_S,
+  readySigil,
+  type SlotContext,
+  TOWER_DANGER_RANGE,
+  towardHome,
+  WARDEN_APPROACH_RANGE,
+  WARDEN_FIGHT_HP_FRAC,
+  WARDEN_PREP_RANGE,
+  WARDEN_PREP_S,
+} from './micro';
+import { fightOdds } from './odds';
+import { clockMeans } from './triggers';
+import type { Alone, Behavior, CreatureName, LaneId, Stance, TargetRule } from './types';
+import { lastHit, manageWave } from './wave';
+
+export function runBehavior(b: Behavior, ctx: SlotContext): Action | null {
+  switch (b.kind) {
+    case 'retreat':
+      return retreat(ctx);
+    case 'hold':
+      return { kind: 'noop' };
+    case 'shop':
+      return shop(ctx);
+    case 'goShop':
+      return goShop(ctx);
+    case 'sell':
+      return sellNamed(ctx, b.item);
+    case 'avoidTower':
+      return avoidTower(ctx, b.escortMin ?? ESCORT_MIN, b.hpBelow ?? 0.65);
+    case 'finishSanctum':
+      return finishSanctum(ctx);
+    case 'fight':
+      return fight(ctx, b.stance ?? 'auto', b.target ?? 'nearest', b.alone ?? 'engage', b.commitAt);
+    case 'hunt':
+      return hunt(ctx, b.hpAbove ?? 0.5);
+    case 'answerVanish':
+      return answerVanish(ctx, b.hpAtLeast ?? 0.55);
+    case 'contestWarden':
+      return contestWarden(
+        ctx,
+        b.hpAtLeast ?? WARDEN_FIGHT_HP_FRAC,
+        b.prepSeconds ?? WARDEN_PREP_S,
+        b.partyAtLeast ?? WARDEN_PARTY,
+      );
+    case 'contestCreature':
+      return contestCreature(
+        ctx,
+        b.which ?? 'any',
+        b.hpAtLeast ?? WARDEN_FIGHT_HP_FRAC,
+        b.prepSeconds ?? WARDEN_PREP_S,
+        b.within ?? WARDEN_APPROACH_RANGE,
+        b.partyAtLeast ?? (b.which === 'ascendant' ? WARDEN_PARTY : CREATURE_PARTY),
+      );
+    case 'farm':
+      return b.mode === 'lastHit' ? lastHit(ctx) : farm(ctx);
+    case 'manageWave':
+      return manageWave(ctx, b.intent);
+    case 'defendTower':
+      return defendTower(ctx, b.within ?? 200);
+    case 'takeCamp':
+      return takeCamp(ctx);
+    case 'jungle':
+      return jungle(ctx, b.side ?? 'own');
+    case 'siege':
+      return siege(ctx, b.escortMin ?? ESCORT_MIN);
+    case 'push':
+      return push(
+        ctx,
+        b.lane ?? 'assigned',
+        b.regroupAt === undefined ? REGROUP_AT_S : b.regroupAt,
+      );
+    case 'obeyOrder':
+      return obeyOrder(ctx);
+    case 'followAlly':
+      return followAlly(ctx, b.keep ?? 3);
+    case 'joinAlly':
+      return joinAlly(ctx, b.within ?? JOIN_RANGE);
+    case 'fallBack':
+      return fallBack(ctx);
+    case 'splitPush':
+      return push(ctx, quietestLane(ctx), null);
+    case 'holdPosition':
+      return holdPosition(ctx, b.x, b.z, b.within ?? 2);
+  }
+}
+
+// Survive: with a chaser on top of it, the kit's own escape key toward home
+// (hints.ts), else Riftstep toward home, else Zephyr to outrun; otherwise
+// Mend if ready; otherwise recall once clear and far enough out; otherwise
+// run. A hunter that just slipped into a brush is still a hunter (lastSeen
+// memory).
+function retreat(ctx: SlotContext): Action {
+  const { s, obs, hints, fountain } = ctx;
+  const chaser =
+    obs.units.some(
+      (u) => !u.friendly && u.kind === 'champion' && hypot(u.x - s.x, u.z - s.z) <= 6,
+    ) ||
+    (obs.lastSeen ?? []).some((ls) => obs.time - ls.at <= 2 && hypot(ls.x - s.x, ls.z - s.z) <= 6);
+  if (chaser) {
+    const escapeKey = (['Q', 'W', 'E'] as const).find(
+      (k) => hints.keys[k] === 'escape' && s.abilityReady[k],
+    );
+    if (escapeKey) {
+      const p = homewardPoint(ctx, 6);
+      return { kind: 'cast', key: escapeKey, x: p.x, z: p.z };
+    }
+    const rift = readySigil(s, 'riftstep');
+    if (rift !== -1) {
+      const p = homewardPoint(ctx, 6);
+      return { kind: 'sigil', slot: rift, x: p.x, z: p.z };
+    }
+    const zephyr = readySigil(s, 'zephyr');
+    if (zephyr !== -1) return { kind: 'sigil', slot: zephyr, x: s.x, z: s.z };
+  }
+  if (!s.recalling) {
+    // Mend before a channel, never during one: casting a sigil cancels it.
+    const mendSlot = readySigil(s, 'mend');
+    if (mendSlot !== -1) return { kind: 'sigil', slot: mendSlot, x: s.x, z: s.z };
+    // Recall home instead of the whole walk (playtest: bots never pressed
+    // B), but only once truly disengaged AND far enough out for the
+    // channel to beat walking: inside RECALL_MIN_HOME_DIST the walk is
+    // faster, and the whole home base sits inside that band.
+    if (ctx.recallClear() && ctx.distHome() > RECALL_MIN_HOME_DIST) return { kind: 'recall' };
+  }
+  // On the pad, just heal: re-issuing a move to the pad center every slot
+  // cleared the path and re-pathed for nothing.
+  if (ctx.atFountain) return { kind: 'noop' };
+  return { kind: 'move', x: fountain.x, z: fountain.z };
+}
+
+// The kit's next step (ADR 0014): the next purchase toward the build in
+// force, or the sale that makes room for it. Both need the fountain; the
+// sim refuses either elsewhere (src/sim/fountain.ts), and a sale is never
+// worth a wasted slot.
+function shop(ctx: SlotContext): Action | null {
+  const step = nextKitStep(ctx.kit().build, ctx.s.items, ctx.s.gold);
+  if (!step || !ctx.atFountain) return null;
+  return step;
+}
+
+// Sell one named item, the owner's own rule.
+function sellNamed(ctx: SlotContext, item: string): Action | null {
+  if (!ctx.atFountain) return null;
+  const slot = ctx.s.items.indexOf(item);
+  return slot === -1 ? null : { kind: 'sell', slot };
+}
+
+// Shop trip: the bank covers the next build step and nobody is around, so
+// go convert it into a power spike instead of drifting with a full purse
+// (snowball review, round 2: bots only ever went home at death's door, so
+// kill gold never became items and a lead never showed on the map).
+function goShop(ctx: SlotContext): Action | null {
+  const { fountain } = ctx;
+  if (!nextKitStep(ctx.kit().build, ctx.s.items, ctx.s.gold) || !ctx.recallClear()) return null;
+  if (ctx.distHome() > RECALL_MIN_HOME_DIST) return { kind: 'recall' };
+  return { kind: 'move', x: fountain.x, z: fountain.z };
+}
+
+// Tower danger: standing in reach of a live enemy tower is only worth it
+// with a minion escort AND a healthy body: the tower switches aggro to any
+// champion that brawls under it, so a hurt bot leaves even escorted. Unless
+// a kill is right there to secure.
+function avoidTower(ctx: SlotContext, escortMin: number, hpBelow: number): Action | null {
+  const { s, champ, fountain } = ctx;
+  const dangerTower = ctx.enemyTowers.find(
+    (t) =>
+      dist(s.x, s.z, t) <= TOWER_DANGER_RANGE &&
+      (ctx.escortAt(t.x, t.z) < escortMin || s.hpFrac < hpBelow),
+  );
+  const securingKill =
+    champ !== null &&
+    s.hpFrac >= 0.4 &&
+    champ.hpFrac < KILL_SECURE_HP_FRAC &&
+    dist(s.x, s.z, champ) <= CAST_RANGE;
+  if (!dangerTower || securingKill) return null;
+  // Step OUT of the tower's reach, not a fixed hop: blend away-from-tower
+  // with toward-home and walk just past the edge of the danger band
+  // (playtest round 2: the fixed 8 toward home could stay under the gun in
+  // the bent side lanes, or even walk closer).
+  const dt = dist(s.x, s.z, dangerTower);
+  const la = hypot(s.x - dangerTower.x, s.z - dangerTower.z) || 1;
+  const lh = hypot(fountain.x - s.x, fountain.z - s.z) || 1;
+  const dirX = (s.x - dangerTower.x) / la + (fountain.x - s.x) / lh;
+  const dirZ = (s.z - dangerTower.z) / la + (fountain.z - s.z) / lh;
+  const ld = hypot(dirX, dirZ) || 1;
+  const step = TOWER_DANGER_RANGE - dt + 2.5;
+  return { kind: 'move', x: s.x + (dirX / ld) * step, z: s.z + (dirZ / ld) * step };
+}
+
+// Close out the game: a vulnerable Sanctum in reach beats everything,
+// especially once it is low (measured stall: both Sanctums chipped to ~300
+// hp with nobody finishing).
+function finishSanctum(ctx: SlotContext): Action | null {
+  const { s } = ctx;
+  const sanctum = ctx.enemies.find((e) => e.kind === 'sanctum' && e.invulnerable !== true);
+  if (
+    sanctum &&
+    dist(s.x, s.z, sanctum) <= FARM_RANGE &&
+    (sanctum.hpFrac < 0.5 || ctx.escortAt(sanctum.x, sanctum.z) >= 2)
+  ) {
+    return { kind: 'attack', targetId: sanctum.id };
+  }
+  return null;
+}
+
+// Fight: Sear a kill-range target (the heal cut closes the escape), then
+// the hint-driven kit (each ability at its TRUE range, the ultimate held
+// behind its gates), otherwise attack.
+// Squishiness by role, for the squishiest target rule: the carries first,
+// the front line last.
+const SQUISH: Readonly<Record<ChampionRole, number>> = {
+  Marksman: 0,
+  Mage: 0,
+  Assassin: 1,
+  Battlemage: 1,
+  Skirmisher: 2,
+  Support: 2,
+  Fighter: 3,
+  Tank: 4,
+};
+
+// Whom to fight (ADR 0014): a hard-controlled enemy champion in attack
+// range beats every rule (each cast against it lands); then the rule: the
+// coach's focus target while in sight, the lowest in health nearby, the
+// squishiest by role nearby, else the nearest.
+function pickTarget(ctx: SlotContext, rule: TargetRule): ObsUnit | null {
+  const { s, obs } = ctx;
+  const cands = ctx.enemyChampions;
+  if (cands.length === 0) return null;
+  const ccd = cands
+    .filter((u) => hardCCd(u, obs.time) && dist(s.x, s.z, u) <= CHAMPION_ATTACK_RANGE)
+    .sort((a, b) => dist(s.x, s.z, a) - dist(s.x, s.z, b))[0];
+  if (ccd) return ccd;
+  if (rule === 'order') {
+    const order = s.coachOrder ?? null;
+    const focus = order?.kind === 'focus' ? cands.find((u) => u.id === order.targetId) : undefined;
+    if (focus) return focus;
+  }
+  const near = cands.filter((u) => dist(s.x, s.z, u) <= FIGHT_TARGET_RADIUS);
+  const byDistance = (a: ObsUnit, b: ObsUnit): number => dist(s.x, s.z, a) - dist(s.x, s.z, b);
+  if (rule === 'lowest' && near.length > 0) {
+    return [...near].sort((a, b) => a.hpFrac - b.hpFrac || byDistance(a, b))[0]!;
+  }
+  if (rule === 'squishiest' && near.length > 0) {
+    const squish = (u: ObsUnit): number => {
+      const role = u.championId ? CHAMPIONS[u.championId]?.role : undefined;
+      return role ? SQUISH[role] : 2;
+    };
+    return [...near].sort((a, b) => squish(a) - squish(b) || byDistance(a, b))[0]!;
+  }
+  return nearest(cands, s.x, s.z);
+}
+
+// A kite's step: straight away from the threat, never into tower fire
+// (home instead when the straight line lands under one).
+function kiteStep(ctx: SlotContext, threat: ObsUnit): Action {
+  const { s } = ctx;
+  const d = dist(s.x, s.z, threat) || 1;
+  const mx = s.x + ((s.x - threat.x) / d) * KITE_STEP;
+  const mz = s.z + ((s.z - threat.z) / d) * KITE_STEP;
+  if (ctx.inTowerReach(mx, mz) && !ctx.inTowerReach(s.x, s.z)) return towardHome(ctx, KITE_STEP);
+  return { kind: 'move', x: mx, z: mz };
+}
+
+// The fight (ADR 0014): Sear in kill range, the kit by its hints, then
+// attacks, holding distance by the stance. Front walks in and chases a
+// little. Kite is an orb walk on the auto-attack clock the observation
+// carries: never interrupt a swing, strike the moment the clock allows and
+// the target is in reach, and between strikes step away from whoever
+// closes (the first kite ran from every chaser and never struck back;
+// scouting round 1 counted it as deaths on the retreat play). Poke casts
+// and steps back and never trades attacks. Auto is kite on a ranged
+// champion, front on a melee one. The commit (plan-bots phase 16): under
+// the odds a play names, the bot never walks in (no chase, no approach, the
+// engage spell held) and passes the turn once nothing is in reach.
+function fight(
+  ctx: SlotContext,
+  stance: Stance,
+  rule: TargetRule,
+  alone: Alone,
+  commitAt?: number,
+): Action | null {
+  const { s, obs } = ctx;
+  const champ = pickTarget(ctx, rule);
+  if (!champ) return null;
+  const committed = commitAt === undefined || fightOdds(ctx) >= commitAt;
+  const dc = dist(s.x, s.z, champ);
+  if (dc <= CAST_RANGE && champ.hpFrac < KILL_SECURE_HP_FRAC) {
+    const sear = readySigil(s, 'sear');
+    if (sear !== -1) return { kind: 'sigil', slot: sear, x: champ.x, z: champ.z };
+  }
+  const range = ctx.attackRange;
+  const mode = stance === 'auto' ? (range >= RANGED_MIN_RANGE ? 'kite' : 'front') : stance;
+  const cast = pickCast(ctx, champ, committed);
+  if (mode === 'front') {
+    if (cast) return cast;
+    if (dc <= CHAMPION_ATTACK_RANGE) return { kind: 'attack', targetId: champ.id };
+    // Told to hold when alone, or the odds under the commit: no walk-in;
+    // the plays below (join, fall back, farm) take the slot instead.
+    if (alone === 'hold' && !ctx.besideAlly()) return null;
+    if (!committed) return null;
+    if (dc <= CHASE_RANGE && !ctx.inTowerReach(champ.x, champ.z)) {
+      return { kind: 'move', x: champ.x, z: champ.z };
+    }
+    return null;
+  }
+  const threat = nearest(ctx.enemyChampions, s.x, s.z);
+  const td = threat ? dist(s.x, s.z, threat) : Number.POSITIVE_INFINITY;
+  const securing = champ.hpFrac < KILL_SECURE_HP_FRAC && dc <= range + 1;
+  const swinging = s.attackSwingUntil != null && s.attackSwingUntil > obs.time;
+  if (swinging) return { kind: 'noop' };
+  if (mode === 'poke') {
+    if (cast) return cast;
+    if (threat && td < range) return kiteStep(ctx, threat);
+    return null;
+  }
+  // kite: the kit's spells first (offensive stats run hot, and a spell
+  // held for a strike is damage lost), then the strike on the clock, then
+  // the step between strikes.
+  if (cast) return cast;
+  const ready = (s.attackReadyAt ?? 0) <= obs.time;
+  const inReach = dc <= range + 0.5;
+  if (ready && inReach) return { kind: 'attack', targetId: champ.id };
+  if (threat && td < range * KITE_DANGER_FRAC && !securing) return kiteStep(ctx, threat);
+  if (inReach) return { kind: 'noop' };
+  if (!committed) return null;
+  if (dc <= range + KITE_APPROACH) {
+    // Close to the edge of range, not past it.
+    const k = (dc - (range - 0.5)) / dc;
+    const ax = s.x + (champ.x - s.x) * k;
+    const az = s.z + (champ.z - s.z) * k;
+    if (!ctx.inTowerReach(ax, az)) return { kind: 'move', x: ax, z: az };
+  }
+  return null;
+}
+
+// The hunt into the dark: a nearly dead enemy that broke line of sight a
+// breath ago is worth walking to its last seen spot, but never on low
+// health and never into tower fire (lastSeen memory, playtest round 2).
+function hunt(ctx: SlotContext, hpAbove: number): Action | null {
+  const { s, obs } = ctx;
+  if (ctx.champ || !(s.hpFrac > hpAbove)) return null;
+  const prey = (obs.lastSeen ?? []).find(
+    (ls) =>
+      ls.hpFrac < KILL_SECURE_HP_FRAC &&
+      obs.time - ls.at <= 3 &&
+      hypot(ls.x - s.x, ls.z - s.z) <= 12 &&
+      !ctx.inTowerReach(ls.x, ls.z),
+  );
+  return prey ? { kind: 'move', x: prey.x, z: prey.z } : null;
+}
+
+// The vanish response: an enemy that slipped into a brush right in front
+// of the bot did not stop existing. Healthy, walk the last seen spot to
+// force it back into sight; hurt, give ground instead of standing where it
+// disappeared (playtest: bots shrugged and went back to farming).
+function answerVanish(ctx: SlotContext, hpAtLeast: number): Action | null {
+  const { s, obs } = ctx;
+  if (ctx.champ) return null;
+  const vanished = (obs.lastSeen ?? []).find(
+    (ls) => obs.time - ls.at <= 2.5 && hypot(ls.x - s.x, ls.z - s.z) <= 9,
+  );
+  if (!vanished) return null;
+  if (s.hpFrac >= hpAtLeast && !ctx.inTowerReach(vanished.x, vanished.z)) {
+    return { kind: 'move', x: vanished.x, z: vanished.z };
+  }
+  return towardHome(ctx, 6);
+}
+
+// The party a neutral body is fought with: self, plus the allied champions
+// already within `within` of the body or walking beside the bot
+// (GROUP_RANGE), whichever is more. The bodies (docs/plan-rings.md, round
+// two) are sized so that a lone champion pokes a ring creature for a
+// minute and a half and the Warden for nothing; a bot that counted itself
+// a party of one stood at a ring chipping until an enemy came (measured on
+// the house bots), so a contest waits for company. The company counted
+// beside the bot is what keeps two bots from each waiting for the other
+// to reach the body first: a pair walks in as a pair.
+export const CREATURE_PARTY = 2;
+export const WARDEN_PARTY = 3;
+const GROUP_RANGE = 15;
+// A rally: the seconds after a body rises, and again every RALLY_EVERY_S
+// while it stands, during which a bot short of its party by one walks to
+// the body and waits beside it for the rest. The clock is the call every
+// bot reads alike, so a team gathers without a word; the windows bound
+// the waiting, so a lone laner does not stand at a ring all match.
+export const RALLY_EVERY_S = 120;
+export const RALLY_WINDOW_S = 40;
+// How close a gathering bot stands to the body: outside its reach, since
+// a neutral body only fights what hits it.
+const GATHER_STAND_OFF = 6;
+
+function rallying(obs: Observation, roseAt: number | null | undefined): boolean {
+  if (roseAt === null || roseAt === undefined) return false;
+  const since = obs.time - roseAt;
+  return since >= 0 && since % RALLY_EVERY_S <= RALLY_WINDOW_S;
+}
+
+// The strike on a live body in reach: the kit's abilities first, the way
+// a fight spends them on a champion (the maintainer's ask: bots hit a
+// creature with their spells too), then the plain attack.
+function strikeBody(ctx: SlotContext, body: ObsUnit): Action | null {
+  const cast = pickCast(ctx, body);
+  if (cast) return cast;
+  if (dist(ctx.s.x, ctx.s.z, body) <= FARM_RANGE) return { kind: 'attack', targetId: body.id };
+  return null;
+}
+
+// Short of the party: during a rally, a healthy bot within range walks to
+// the body and waits beside it, out of its reach, for the rest.
+function gather(
+  ctx: SlotContext,
+  body: { x: number; z: number },
+  party: number,
+  partyAtLeast: number,
+  hpAtLeast: number,
+  within: number,
+  roseAt: number | null | undefined,
+): Action | null {
+  const { s, obs } = ctx;
+  if (party < partyAtLeast - 1 || s.hpFrac < hpAtLeast) return null;
+  const d = dist(s.x, s.z, body);
+  if (d > within || !rallying(obs, roseAt)) return null;
+  if (d <= GATHER_STAND_OFF + 2) return { kind: 'noop' };
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: body.x + jx, z: body.z + jz };
+}
+
+function partyAt(ctx: SlotContext, x: number, z: number, within: number): number {
+  const { s, obs } = ctx;
+  let atBody = 0;
+  let beside = 0;
+  for (const u of obs.units) {
+    if (!u.friendly || u.kind !== 'champion' || u.hpFrac <= 0) continue;
+    if (dist(x, z, u) <= within) atBody += 1;
+    if (dist(s.x, s.z, u) <= GROUP_RANGE) beside += 1;
+  }
+  return 1 + Math.max(atBody, beside);
+}
+
+// The Warden's pit: where it stands, as the observation says; before a
+// rise nobody knows which pit was drawn (ADR 0023), so a bot guesses the
+// nearest of the map's pits, the way a human walks to the closest one.
+function wardenPitOf(ctx: SlotContext): { x: number; z: number } {
+  const { s, obs } = ctx;
+  if (obs.wardenPit) return obs.wardenPit;
+  let pit = ctx.map.wardenPits[0]!;
+  for (const p of ctx.map.wardenPits) {
+    if (hypot(p.x - s.x, p.z - s.z) < hypot(pit.x - s.x, pit.z - s.z)) pit = p;
+  }
+  return pit;
+}
+
+// Contest the Warden: a live one is the team's one rendezvous. Walk to it
+// healthy and in a party, fight it in reach. Shortly before the spawn
+// clock strikes, healthy bots pre-position at the nearest pit; both
+// teams read the same clock, so the pits become the mid game's fight
+// (obs.objectiveSpawnAt, obs.wardenPit once it stands).
+function contestWarden(
+  ctx: SlotContext,
+  hpAtLeast: number,
+  prepSeconds: number,
+  partyAtLeast: number,
+): Action | null {
+  const { s, obs } = ctx;
+  const { jx, jz } = ctx.jitter();
+  const warden = ctx.enemies.find((u) => u.kind === 'warden');
+  if (warden) {
+    const party = partyAt(ctx, warden.x, warden.z, WARDEN_APPROACH_RANGE);
+    if (party < partyAtLeast) {
+      return gather(
+        ctx,
+        warden,
+        party,
+        partyAtLeast,
+        hpAtLeast,
+        WARDEN_APPROACH_RANGE,
+        obs.wardenRoseAt,
+      );
+    }
+    const hit = strikeBody(ctx, warden);
+    if (hit) return hit;
+    const dw = dist(s.x, s.z, warden);
+    if (dw <= WARDEN_APPROACH_RANGE && s.hpFrac >= hpAtLeast) {
+      return { kind: 'move', x: warden.x + jx, z: warden.z + jz };
+    }
+    return null;
+  }
+  if (obs.objectiveSpawnAt != null && s.hpFrac >= hpAtLeast) {
+    const untilSpawn = obs.objectiveSpawnAt - obs.time;
+    if (untilSpawn >= 0 && untilSpawn <= prepSeconds) {
+      const pit = wardenPitOf(ctx);
+      const dp = hypot(pit.x - s.x, pit.z - s.z);
+      if (dp <= 6) return { kind: 'noop' };
+      if (dp <= WARDEN_PREP_RANGE) return { kind: 'move', x: pit.x + jx, z: pit.z + jz };
+    }
+  }
+  return null;
+}
+
+// The rings' clocks a play means, and the live creatures among them as
+// the team sees them: the clock is public, the body sits in the fog like
+// a camp (ADR 0023), so a live creature may be up and out of sight.
+function ringClocksOf(ctx: SlotContext, which: CreatureName): readonly ObsCreature[] {
+  return (ctx.obs.creatures ?? []).filter((c) => clockMeans(c, which));
+}
+
+// The nearest clock among those with a live creature, seen or not: where
+// a bot walks when the clock says up and nobody has sight on the ring.
+function nearestLiveClock(ctx: SlotContext, clocks: readonly ObsCreature[]): ObsCreature | null {
+  const { s } = ctx;
+  let best: ObsCreature | null = null;
+  for (const c of clocks) {
+    if (c.unitId === null) continue;
+    if (!best || hypot(c.x - s.x, c.z - s.z) < hypot(best.x - s.x, best.z - s.z)) best = c;
+  }
+  return best;
+}
+
+function liveCreatures(ctx: SlotContext, clocks: readonly ObsCreature[]): ObsUnit[] {
+  const out: ObsUnit[] = [];
+  for (const c of clocks) {
+    if (c.unitId === null) continue;
+    const u = ctx.enemies.find((e) => e.id === c.unitId);
+    if (u) out.push(u);
+  }
+  return out;
+}
+
+// Contest a ring creature (CONTEXT.md: Ring): the same shape as the
+// Warden's contest. A live one in reach is attacked; a live one within the
+// range is walked to when healthy; shortly before a rise, a healthy bot
+// pre-positions at the ring whose clock is soonest, if it stands close
+// enough to make it. The rings sit at the lanes' elbows, so with the
+// default range this is the side laners' business, as it should be. An
+// Ascendant is contested the same way: every house style names it in a
+// play of its own, in the stance of its Warden play.
+function contestCreature(
+  ctx: SlotContext,
+  which: CreatureName,
+  hpAtLeast: number,
+  prepSeconds: number,
+  within: number,
+  partyAtLeast: number,
+): Action | null {
+  const { s, obs } = ctx;
+  const clocks = ringClocksOf(ctx, which);
+  if (clocks.length === 0) return null;
+  const { jx, jz } = ctx.jitter();
+  const live = nearest(liveCreatures(ctx, clocks), s.x, s.z);
+  // A live creature nobody sees is walked to at its ring: the clock says
+  // it stands there, and the fog lifts on arrival.
+  const body = live ?? nearestLiveClock(ctx, clocks);
+  if (body) {
+    const party = partyAt(ctx, body.x, body.z, within);
+    if (party < partyAtLeast) {
+      const roseAt = live
+        ? clocks.find((c) => c.unitId === live.id)?.roseAt
+        : (body as ObsCreature).roseAt;
+      return gather(ctx, body, party, partyAtLeast, hpAtLeast, within, roseAt);
+    }
+    if (live) {
+      const hit = strikeBody(ctx, live);
+      if (hit) return hit;
+    }
+    const d = dist(s.x, s.z, body);
+    if (d <= within && s.hpFrac >= hpAtLeast) {
+      return { kind: 'move', x: body.x + jx, z: body.z + jz };
+    }
+    return null;
+  }
+  if (s.hpFrac < hpAtLeast) return null;
+  let ring: ObsCreature | null = null;
+  for (const c of clocks) {
+    if (c.riseAt === null) continue;
+    const until = c.riseAt - obs.time;
+    if (until < 0 || until > prepSeconds) continue;
+    if (!ring || hypot(c.x - s.x, c.z - s.z) < hypot(ring.x - s.x, ring.z - s.z)) ring = c;
+  }
+  if (!ring) return null;
+  const dp = hypot(ring.x - s.x, ring.z - s.z);
+  if (dp <= 6) return { kind: 'noop' };
+  if (dp <= WARDEN_PREP_RANGE) return { kind: 'move', x: ring.x + jx, z: ring.z + jz };
+  return null;
+}
+
+function farm(ctx: SlotContext): Action | null {
+  const { s } = ctx;
+  const minion = nearest(
+    ctx.enemies.filter((u) => u.kind === 'minion'),
+    s.x,
+    s.z,
+  );
+  if (minion && dist(s.x, s.z, minion) <= FARM_RANGE) {
+    return { kind: 'attack', targetId: minion.id };
+  }
+  return null;
+}
+
+// Jungle detour: with no enemy champion in sight and no minion to farm, a
+// visible camp nearby is free income (systems review v1: one dumb rule).
+function takeCamp(ctx: SlotContext): Action | null {
+  const { s } = ctx;
+  if (ctx.champ) return null;
+  const camp = nearest(
+    ctx.enemies.filter((u) => u.kind === 'camp'),
+    s.x,
+    s.z,
+  );
+  if (camp && dist(s.x, s.z, camp) <= FARM_RANGE) return { kind: 'attack', targetId: camp.id };
+  return null;
+}
+
+// The forest route (CONTEXT.md: Jungler; ADR 0023). A camp body in reach
+// is cleared with the kit's abilities before the strikes; otherwise the
+// bot walks to the camp it believes up and can reach first, on what the
+// team has seen (obs.camps): a spot never looked at is up from the
+// opening clock, a spot seen standing is up, a spot seen empty is up
+// again once its kind's respawn clock has run since the team first saw
+// it empty. A spot whose clock outruns the walk by more than a short
+// wait is left for later, so the bot never stands at an empty spot; the
+// own forest by default (the spots nearer the own fountain than the
+// enemy's). With every camp believed down the turn passes, so the plays
+// below (a gank, a creature, a lane) take over. A spot in sight and
+// empty flips the memory on arrival, so a camp the enemy took quietly
+// costs one walk, the way it costs a human one.
+export const JUNGLE_CLEAR_RANGE = 10;
+const JUNGLE_WAIT_S = 12;
+const JUNGLE_WALK_SPEED = 3.4;
+
+function campUpAt(camp: ObsCamp): number {
+  if (camp.up === null) return CAMP_FIRST_SPAWN_S;
+  if (camp.up) return camp.seenAt ?? 0;
+  return (camp.downSince ?? camp.seenAt ?? 0) + CAMPS[camp.kind].respawnS;
+}
+
+function jungle(ctx: SlotContext, side: 'own' | 'any'): Action | null {
+  const { s, obs, fountain } = ctx;
+  const body = nearest(
+    ctx.enemies.filter((u) => u.kind === 'camp'),
+    s.x,
+    s.z,
+  );
+  if (body && dist(s.x, s.z, body) <= JUNGLE_CLEAR_RANGE) {
+    return strikeBody(ctx, body) ?? { kind: 'attack', targetId: body.id };
+  }
+  const enemyFountain = ctx.map.fountains.find((f) => f.team !== s.team);
+  let best: ObsCamp | null = null;
+  let bestAt = Number.POSITIVE_INFINITY;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const camp of obs.camps ?? []) {
+    if (
+      side === 'own' &&
+      enemyFountain &&
+      hypot(camp.x - fountain.x, camp.z - fountain.z) >
+        hypot(camp.x - enemyFountain.x, camp.z - enemyFountain.z)
+    ) {
+      continue;
+    }
+    if (ctx.inTowerReach(camp.x, camp.z)) continue;
+    const arrival = obs.time + hypot(camp.x - s.x, camp.z - s.z) / JUNGLE_WALK_SPEED;
+    const upAt = campUpAt(camp);
+    // Before the opening clock every spot is due at once: walk to the
+    // nearest and wait there; after it, a spot whose clock outruns the
+    // walk by more than a short wait is left for later.
+    if (obs.time >= CAMP_FIRST_SPAWN_S && upAt > arrival + JUNGLE_WAIT_S) continue;
+    const at = Math.max(arrival, upAt);
+    const d = hypot(camp.x - s.x, camp.z - s.z);
+    // The soonest clear; the nearest when several are due together (the
+    // opening, when the whole forest rises at once).
+    if (at < bestAt - 1e-9 || (Math.abs(at - bestAt) <= 1e-9 && d < bestD)) {
+      bestAt = at;
+      bestD = d;
+      best = camp;
+    }
+  }
+  if (!best) return null;
+  if (hypot(best.x - s.x, best.z - s.z) <= 3) return { kind: 'noop' };
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: best.x + jx * 0.3, z: best.z + jz * 0.3 };
+}
+
+function siege(ctx: SlotContext, escortMin: number): Action | null {
+  const { s } = ctx;
+  const structure = nearest(
+    ctx.enemies.filter(
+      (u) => (u.kind === 'tower' || u.kind === 'sanctum') && u.invulnerable !== true,
+    ),
+    s.x,
+    s.z,
+  );
+  if (
+    structure &&
+    dist(s.x, s.z, structure) <= FARM_RANGE &&
+    ctx.escortAt(structure.x, structure.z) >= escortMin
+  ) {
+    return { kind: 'attack', targetId: structure.id };
+  }
+  return null;
+}
+
+// Push a lane: follow the most advanced friendly minion near the lane's
+// polyline, else walk that lane's waypoints toward the enemy end, else walk
+// at the enemy Sanctum. Unassigned seats keep the any-lane behavior. Past
+// the regroup bell, every assigned bot plays mid as ONE push (playtest
+// round 3: five solo pushes never converged, one bot sieged top alone all
+// match). The jitter differentiates matches across seeds.
+function push(ctx: SlotContext, lane: LaneId | 'assigned', regroupAt: number | null): Action {
+  const { s, obs, enemySanctum } = ctx;
+  const { jx, jz } = ctx.jitter();
+  const laneId: LaneId | null =
+    lane === 'assigned'
+      ? s.lane !== null && regroupAt !== null && obs.time >= regroupAt
+        ? 'mid'
+        : s.lane
+      : lane;
+  const myLane = laneId ? ctx.map.lanes[laneId] : null;
+  let vanguard: ObsUnit | null = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const m of ctx.friendlyMinions) {
+    if (myLane && laneDistance(myLane, m.x, m.z) > 7) continue;
+    const d = hypot(m.x - enemySanctum.x, m.z - enemySanctum.z);
+    if (d < bestD) {
+      bestD = d;
+      vanguard = m;
+    }
+  }
+  if (vanguard) return { kind: 'move', x: vanguard.x + jx, z: vanguard.z + jz };
+  if (myLane) {
+    const oriented = s.team === 0 ? myLane : [...myLane].reverse();
+    let idx = 0;
+    let best = Number.POSITIVE_INFINITY;
+    oriented.forEach((p, i) => {
+      const d = hypot(p.x - s.x, p.z - s.z);
+      if (d < best) {
+        best = d;
+        idx = i;
+      }
+    });
+    const next = oriented[Math.min(idx + 1, oriented.length - 1)]!;
+    return { kind: 'move', x: next.x + jx, z: next.z + jz };
+  }
+  return { kind: 'move', x: enemySanctum.x + jx, z: enemySanctum.z + jz };
+}
+
+function followAlly(ctx: SlotContext, keep: number): Action | null {
+  const { s, obs } = ctx;
+  const ally = nearest(
+    obs.units.filter((u) => u.friendly && u.kind === 'champion'),
+    s.x,
+    s.z,
+  );
+  if (!ally) return null;
+  if (dist(s.x, s.z, ally) <= keep) return { kind: 'noop' };
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: ally.x + jx, z: ally.z + jz };
+}
+
+// Join the nearest ally in a fight (scouting round 1: fights were taken
+// one bot at a time, and a third of the deaths were outnumbered). Beside
+// it, or with nobody fighting, the turn passes to the plays below.
+function joinAlly(ctx: SlotContext, within: number): Action | null {
+  const { s } = ctx;
+  const ally = ctx.engagedAllies(within)[0];
+  if (!ally || dist(s.x, s.z, ally) <= BESIDE_RANGE) return null;
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: ally.x + jx, z: ally.z + jz };
+}
+
+// Fall back under the nearest live allied tower instead of all the way
+// home: the lane is kept, the tower shoots whoever follows, and the plays
+// below (fight, farm) go on there once under it.
+// The lane a split pusher takes: the one enemies were seen in the least
+// over the last minute (obs.laneActivity), the farthest from the enemy
+// champions in sight on a tie, the assigned lane without the field.
+export function quietestLane(ctx: SlotContext): LaneId | 'assigned' {
+  const activity = ctx.obs.laneActivity;
+  if (!activity) return 'assigned';
+  const lanes: LaneId[] = ['top', 'mid', 'bot'];
+  const foes = ctx.enemyChampions;
+  const farness = (lane: LaneId): number => {
+    if (foes.length === 0) return 0;
+    const path = ctx.map.lanes[lane];
+    const mid = path[Math.floor(path.length / 2)]!;
+    let sum = 0;
+    for (const f of foes) sum += hypot(f.x - mid.x, f.z - mid.z);
+    return sum / foes.length;
+  };
+  let best: LaneId = ctx.s.lane ?? 'mid';
+  let bestKey = Number.POSITIVE_INFINITY;
+  for (const lane of lanes) {
+    // Seconds seen weigh; the distance breaks ties (a small term).
+    const key = activity[lane] - farness(lane) / 1000;
+    if (key < bestKey) {
+      bestKey = key;
+      best = lane;
+    }
+  }
+  return best;
+}
+
+// The collapse (plan-bots phase 16): an allied tower with enemy champions
+// at it is where the map is being lost, and a spread enemy is caught there
+// with the numbers. Walk to the most threatened tower in range; beside it,
+// or with none threatened, the plays below take the slot.
+function defendTower(ctx: SlotContext, within: number): Action | null {
+  const { s } = ctx;
+  const target = ctx.threatenedTowers(within)[0];
+  if (!target || dist(s.x, s.z, target.tower) <= BESIDE_RANGE + 4) return null;
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: target.tower.x + jx, z: target.tower.z + jz };
+}
+
+function fallBack(ctx: SlotContext): Action | null {
+  const { s, obs } = ctx;
+  const tower = nearest(
+    obs.units.filter((u) => u.friendly && u.kind === 'tower'),
+    s.x,
+    s.z,
+  );
+  if (!tower || dist(s.x, s.z, tower) <= BESIDE_RANGE) return null;
+  const { jx, jz } = ctx.jitter();
+  return { kind: 'move', x: tower.x + jx, z: tower.z + jz };
+}
+
+// The coach's order, done the playbook's way: the bot's own hands, the
+// owner's intent. A goto walks there (the sim clears it on arrival), a
+// hold stays, a back runs home, a group sticks to the nearest ally, a
+// warden or a creature goes for it whatever the health, a focus fights the named target
+// while it is in sight and passes the turn otherwise.
+function obeyOrder(ctx: SlotContext): Action | null {
+  const { s } = ctx;
+  const order = s.coachOrder ?? null;
+  if (!order) return null;
+  switch (order.kind) {
+    case 'goto':
+      return holdPosition(ctx, order.x, order.z, GOTO_DONE_RADIUS);
+    case 'hold':
+      return holdPosition(ctx, order.x, order.z, 2);
+    case 'back':
+      return retreat(ctx);
+    case 'group':
+      return followAlly(ctx, 4);
+    case 'warden': {
+      const warden = ctx.enemies.find((u) => u.kind === 'warden');
+      if (warden) return strikeBody(ctx, warden) ?? { kind: 'move', x: warden.x, z: warden.z };
+      const pit = wardenPitOf(ctx);
+      return holdPosition(ctx, pit.x, pit.z, 6);
+    }
+    case 'creature': {
+      // The live creature, the nearest; a live one out of sight at its
+      // ring; else the ring whose rise is soonest, held until it does.
+      const clocks = ringClocksOf(ctx, 'any');
+      const live = nearest(liveCreatures(ctx, clocks), s.x, s.z);
+      if (live) return strikeBody(ctx, live) ?? { kind: 'move', x: live.x, z: live.z };
+      const up = nearestLiveClock(ctx, clocks);
+      if (up) return holdPosition(ctx, up.x, up.z, 6);
+      let next: ObsCreature | null = null;
+      for (const c of clocks) {
+        if (c.riseAt !== null && (!next || c.riseAt < (next.riseAt ?? 0))) next = c;
+      }
+      if (!next) return null;
+      return holdPosition(ctx, next.x, next.z, 6);
+    }
+    case 'focus': {
+      const target = ctx.enemies.find((u) => u.id === order.targetId);
+      if (!target) return null;
+      if (target.kind === 'champion') {
+        const cast = pickCast(ctx, target);
+        if (cast) return cast;
+      }
+      return { kind: 'attack', targetId: target.id };
+    }
+  }
+}
+
+function holdPosition(ctx: SlotContext, x: number, z: number, within: number): Action {
+  const { s } = ctx;
+  if (hypot(x - s.x, z - s.z) <= within) return { kind: 'noop' };
+  return { kind: 'move', x, z };
+}

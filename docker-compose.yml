@@ -1,0 +1,217 @@
+# Claude of Legends in production: one image, one process, one port.
+#
+# The container publishes no host port. The only way in is the Caddy instance
+# of the km01 stack, reached over the shared `km01_edge` network, so a
+# compromise of this public, account-less server cannot reach the database or
+# the job queue that sit on the km01 network. The km01 compose file owns
+# `km01_edge`: bring that stack up first on a fresh box.
+#
+#   docker compose up -d --build     start or update the game
+#   docker compose logs -f game      follow the server log
+
+services:
+  game:
+    build: .
+    image: claude-of-legends:latest
+    container_name: claude_of_legends
+    restart: unless-stopped
+    environment:
+      PORT: "8787"
+      # Loopback by default so the port is not exposed until the operator
+      # opens it; set HOST=0.0.0.0 in .env to serve the machine's network.
+      HOST: "${HOST:-}"
+      DATA_DIR: /app/data
+      # Exactly one proxy sits in front (the km01 Caddy), and it overwrites the
+      # forwarding headers, so the per-address abuse caps key on the real
+      # player and not on the proxy (server/edge.ts).
+      TRUST_PROXY: "1"
+      # Pages allowed to open a game socket. The client is served by this same
+      # process, so the host in the request is always allowed and this could be
+      # empty; both public names are spelled out anyway, so a proxy that ever
+      # rewrites Host cannot refuse every browser at once.
+      ALLOWED_ORIGINS: "https://claudeoflegends.com,https://www.claudeoflegends.com"
+      # Where the links in confirmation and reset mails point. Must be the
+      # public name, not the container's, or every link is unreachable.
+      PUBLIC_URL: "https://claudeoflegends.com"
+      # Transactional mail (ADR 0007). Both come from a .env file beside
+      # this one, which is gitignored: MAIL_API_KEY is a credential and
+      # must never be committed. Without them the process logs links
+      # instead of sending them, and says which at boot. Outbound HTTPS
+      # only; the container still publishes no port of its own.
+      MAIL_API_KEY: "${MAIL_API_KEY:-}"
+      MAIL_FROM: "${MAIL_FROM:-}"
+      # Optional Discord sign-in (ADR 0009), from the same .env file:
+      # DISCORD_CLIENT_SECRET is a credential and must never be
+      # committed. Without both, the button never appears and everything
+      # else works exactly as before. The redirect follows PUBLIC_URL
+      # unless DISCORD_REDIRECT_URI overrides it.
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      # Optional auto-join (ADR 0009): both set and a new account is put
+      # into the server on the way in, which widens the consent screen.
+      # DISCORD_BOT_TOKEN is a credential; the guild id is not.
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      DISCORD_GUILD_ID: "${DISCORD_GUILD_ID:-}"
+      # The audience counter's site (PRIVACY.md): the id Umami gave it,
+      # which puts the tag on the page (server/stats_tag.ts). Empty, and
+      # the page goes out without one. The counter itself is the `stats`
+      # service below.
+      STATS_WEBSITE_ID: "${STATS_WEBSITE_ID:-}"
+      # The Forge's generation provider (ADR 0010), from the same .env
+      # file: TRIPO_API_KEY is a credential and must never be committed.
+      # Without it, finalize answers "not configured" and everything else
+      # works. See .env.example for the Tripo terms caveat before opening
+      # the Forge to players.
+      TRIPO_API_KEY: "${TRIPO_API_KEY:-}"
+      # The image model behind every 2D generation; optional, and the
+      # default is a quality choice rather than a deployment one.
+      TRIPO_IMAGE_MODEL: "${TRIPO_IMAGE_MODEL:-}"
+      # The 2D bought direct from the vendor that makes it, at less than
+      # half what Tripo charges to resell the same model; the 3D stays
+      # with Tripo. Optional: without it the Forge works and an image
+      # costs 10 embers instead of 4. A credential, never committed.
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # How the direct 2D is asked for; all optional, all quality or
+      # framing choices rather than deployment ones.
+      OPENAI_IMAGE_MODEL: "${OPENAI_IMAGE_MODEL:-}"
+      OPENAI_IMAGE_SIZE: "${OPENAI_IMAGE_SIZE:-}"
+      OPENAI_IMAGE_QUALITY: "${OPENAI_IMAGE_QUALITY:-}"
+      # The coach and the kit conversation (ADR 0013), from the same .env
+      # file: ANTHROPIC_API_KEY is a credential and must never be
+      # committed. Without it, suggestions are off and the server says so
+      # at boot; everything else works. BOT_COACH_MODEL is optional and
+      # falls back to the default in .env.example.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      BOT_COACH_MODEL: "${BOT_COACH_MODEL:-}"
+      SUGGEST_MODEL: "${SUGGEST_MODEL:-}"
+      # The ledger, the caps, the server's daily ceilings and the meta-API
+      # rate limit, all optional. Empty falls back to the defaults listed
+      # in .env.example; the server treats an empty string as unset. Every
+      # name here is read by server/main.ts, and tests/env_wiring.test.ts
+      # fails the build if one of them stops being.
+      EMBERS_PER_WEEK: "${EMBERS_PER_WEEK:-}"
+      FORGE_DRAFT_CAP: "${FORGE_DRAFT_CAP:-}"
+      REPORT_TAKEDOWN_THRESHOLD: "${REPORT_TAKEDOWN_THRESHOLD:-}"
+      SERVER_GENERATIONS_PER_DAY: "${SERVER_GENERATIONS_PER_DAY:-}"
+      SERVER_ANIMATIONS_PER_DAY: "${SERVER_ANIMATIONS_PER_DAY:-}"
+      SERVER_2D_PER_DAY: "${SERVER_2D_PER_DAY:-}"
+      SERVER_AGENT_PER_DAY: "${SERVER_AGENT_PER_DAY:-}"
+      API_RATE_PER_MIN: "${API_RATE_PER_MIN:-}"
+      ART_HISTORY_CAP: "${ART_HISTORY_CAP:-}"
+      ASSET_MAX_IMAGE_KB: "${ASSET_MAX_IMAGE_KB:-}"
+      ASSET_MAX_MODEL_KB: "${ASSET_MAX_MODEL_KB:-}"
+      # Bots on the account (ADR 0013): the two abuse rails, how long an
+      # absent owner still gets coached, and the Arena's cadence.
+      BOT_CAP: "${BOT_CAP:-}"
+      BOT_DEPOSIT_CAP: "${BOT_DEPOSIT_CAP:-}"
+      COACH_IDLE_DAYS: "${COACH_IDLE_DAYS:-}"
+      ARENA_ROUND_MINUTES: "${ARENA_ROUND_MINUTES:-}"
+      ARENA_PLAY_NOW_PER_DAY: "${ARENA_PLAY_NOW_PER_DAY:-}"
+      SPARRING_PER_SIDE: "${SPARRING_PER_SIDE:-}"
+    volumes:
+      # Player identities, the match log, and the Forge store. Careers and
+      # forged champions reset without this.
+      - game_data:/app/data
+    networks:
+      - edge
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # The audience counter (PRIVACY.md, docs/deploy.md): Umami and a database
+  # of its own, on this box and nowhere else. Both sit behind the `stats`
+  # profile, so a deployment that has not asked for them (COMPOSE_PROFILES
+  # unset in .env) runs the game exactly as before. The counter joins the
+  # edge network so the proxy can hand it the two paths the browser uses;
+  # its database joins only the private one and publishes nothing.
+  stats:
+    # Umami 3.3.1, pinned by digest: the project tags only `latest`.
+    image: ghcr.io/umami-software/umami:postgresql-latest@sha256:fa32d116cf20cad52cbc3fad9a63b46e7fa02299d8f967168eb453d49c476b4a
+    container_name: claude_of_legends_stats
+    restart: unless-stopped
+    profiles: ["stats"]
+    depends_on:
+      stats_db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://umami:${STATS_DB_PASSWORD:-}@stats_db:5432/umami"
+      # Signs the dashboard's sessions. From .env, never committed.
+      APP_SECRET: "${STATS_APP_SECRET:-}"
+      # The two paths the proxy hands to this container from the game's
+      # own origin, so the browser never talks to another host and a
+      # blocker's list of tracker names finds nothing to match:
+      # server/stats_tag.ts names the first, the tracker posts to the
+      # second.
+      TRACKER_SCRIPT_NAME: "visit.js"
+      COLLECT_API_ENDPOINT: "/api/visit"
+      # Nothing leaves this box: no usage report to the project's own
+      # servers, no check for a newer version.
+      DISABLE_TELEMETRY: "1"
+      DISABLE_UPDATES: "1"
+    networks:
+      - edge
+      - stats
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/heartbeat').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  stats_db:
+    image: postgres:16-alpine
+    container_name: claude_of_legends_stats_db
+    restart: unless-stopped
+    profiles: ["stats"]
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: "${STATS_DB_PASSWORD:-}"
+    volumes:
+      # The counter's whole record. scripts/backup_game_data.sh dumps it
+      # beside the game's data.
+      - stats_db:/var/lib/postgresql/data
+    networks:
+      - stats
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  game_data:
+  stats_db:
+
+networks:
+  edge:
+    name: km01_edge
+    external: true
+  stats:
+    internal: true

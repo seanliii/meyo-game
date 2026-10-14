@@ -1,0 +1,157 @@
+// The home's bar (CONTEXT.md: Home) filled in: the sections that are
+// pages of their own, and at the right the account's own block, its place
+// by hand beside its name, which opens the account drawer. Pure DOM over
+// /api/ladder/mine for the place.
+
+import { tierOf } from '../net/tiers';
+import { BALANCE_CSS, balanceTag, setBalanceTag } from './balances';
+import type { Places } from './ladder_card';
+import { el } from './menu';
+import type { Bar } from './page';
+import { emblem } from './tier_emblem';
+
+const CSS = `${BALANCE_CSS}
+/* The two balances, between the sections and the account: what the
+   account holds, beside who it is and where it stands. Marks and not
+   words (ui/balances.ts), because the bar has room for a number and the
+   noun was being printed three times a screen.
+   Empty until the account sheet answers, and empty forever for a reader
+   the server does not know: a balance of nothing and no balance at all
+   look the same, and only one of them is true. */
+.pg-purse { display: inline-flex; align-items: center; gap: 14px; margin-right: 4px; }
+.pg-purse:empty { display: none; }
+.pg-purse .bal { font-size: 12.5px; }
+/* The account block is the wider thing and wins the room first. */
+@media (max-width: 860px) { .pg-purse { display: none; } }
+.pg-bar .pg-bar-dot { display: inline-block; width: 7px; height: 7px; margin-left: 7px;
+  border-radius: 50%; background: #6ad07a; box-shadow: 0 0 8px #6ad07a; vertical-align: middle; }
+.pg-brand-home { cursor: pointer; transition: filter 0.15s ease; }
+.pg-brand-home:hover { filter: brightness(1.25); }
+.pg-bar .pg-account {
+  display: inline-flex; align-items: center; gap: 10px; text-transform: none; letter-spacing: 0;
+  padding: 4px 8px 4px 4px; border-radius: 8px; border: 1px solid transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pg-bar .pg-account:hover { border-color: #2b3f60; background: rgba(8, 12, 22, 0.6); }
+.pg-place { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+.pg-place b { font-family: Cinzel, Georgia, serif; font-size: 12px; letter-spacing: 1px; color: #e6d7a8; }
+.pg-place span { font-size: 11px; color: #8ba1c0; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) { .pg-place { display: none; } }
+`;
+
+let cssInstalled = false;
+function ensureCss(): void {
+  if (cssInstalled) return;
+  cssInstalled = true;
+  const style = document.createElement('style');
+  style.textContent = CSS;
+  document.head.appendChild(style);
+}
+
+export interface HomeSection {
+  // The key ui/section_host.ts tracks, so the bar can light the one open.
+  key: string;
+  label: string;
+  // A dot beside the label: something new behind it (the news of the
+  // week, src/ui/news.ts). Decided once, when the bar is built.
+  mark?: boolean;
+  open: () => void;
+}
+
+export interface HomeBarOptions {
+  name: string;
+  sections: readonly HomeSection[];
+  onAccount: () => void;
+  // The wordmark: closes whatever section is open, back to the tiles.
+  onHome: () => void;
+}
+
+export interface HomeBar {
+  // Called by whatever spends: recruiting a champion and every act in the
+  // Forge already know the new balance, so the bar is told rather than
+  // made to ask again.
+  setBalances(laurels: number, embers: number): void;
+  // Asked again after a section that spends closes. The account sheet is
+  // the only thing that knows both numbers, and it is one small request
+  // against a page the player has just stopped interacting with.
+  refreshBalances(): void;
+  // Lights the open section, or none of them back on the tiles.
+  setActive(key: string | null): void;
+}
+
+export function mountHomeBar(bar: Bar, o: HomeBarOptions): HomeBar {
+  ensureCss();
+  const entries = new Map<string, HTMLButtonElement>();
+  for (const s of o.sections) {
+    const b = el('button', '', s.label);
+    b.type = 'button';
+    if (s.mark) b.appendChild(el('i', 'pg-bar-dot'));
+    b.addEventListener('click', s.open);
+    bar.links.appendChild(b);
+    entries.set(s.key, b);
+  }
+  // The wordmark is the way back to the tiles from any section.
+  bar.brand.classList.add('pg-brand-home');
+  bar.brand.addEventListener('click', o.onHome);
+
+  // What the account holds, from its own sheet. The place below comes
+  // from the ladder for the same reason both are fetched here rather than
+  // passed in: the bar outlives every screen that could have known them.
+  const purse = el('span', 'pg-purse');
+  bar.right.appendChild(purse);
+  const tags = new Map<'laurels' | 'embers', HTMLElement>();
+  const showBalances = (laurels: number, embers: number): void => {
+    for (const [kind, n] of [
+      ['laurels', laurels],
+      ['embers', embers],
+    ] as const) {
+      const had = tags.get(kind);
+      if (had) {
+        setBalanceTag(had, kind, n);
+        continue;
+      }
+      const tag = balanceTag(kind, n);
+      tags.set(kind, tag);
+      purse.appendChild(tag);
+    }
+  };
+
+  const account = el('button', 'pg-account');
+  account.type = 'button';
+  const place = el('span', 'pg-place');
+  account.append(place, el('span', 'pg-who', o.name));
+  account.addEventListener('click', o.onAccount);
+  bar.right.appendChild(account);
+
+  // The place by hand; the other ways live in the drawer and on the ladder.
+  fetch('/api/ladder/mine', { credentials: 'same-origin' })
+    .then((r) => (r.ok ? (r.json() as Promise<Places>) : null))
+    .then((places) => {
+      if (!places || !account.isConnected) return;
+      const hand = places.hand;
+      const tier = tierOf(hand.rating);
+      place.append(el('b', '', tier.name), el('span', '', String(hand.rating)));
+      account.prepend(emblem(tier, 30));
+    })
+    .catch(() => {});
+
+  const refreshBalances = (): void => {
+    fetch('/api/me', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? (r.json() as Promise<Record<string, unknown>>) : null))
+      .then((me) => {
+        if (!me || !purse.isConnected) return;
+        if (typeof me.laurels !== 'number' || typeof me.embers !== 'number') return;
+        showBalances(me.laurels, me.embers);
+      })
+      .catch(() => {});
+  };
+  refreshBalances();
+
+  return {
+    setBalances: showBalances,
+    refreshBalances,
+    setActive(key: string | null): void {
+      for (const [k, b] of entries) b.classList.toggle('on', k === key);
+    },
+  };
+}

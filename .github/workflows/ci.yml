@@ -1,0 +1,29 @@
+# Keeps main deployable: the same three commands the contributing guide asks
+# for locally. Nothing here deploys; deployment is docs/deploy.md.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # public/voice/ lives in git-lfs; the voice gate reads the real clips.
+          lfs: true
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.34.5
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm lint

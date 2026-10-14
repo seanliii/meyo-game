@@ -1,0 +1,133 @@
+// What the sim's outcome depends on, in one string.
+//
+// A replay is a RE-SIMULATION: the record keeps a seed, the picks and the
+// commands, and the viewer rebuilds the match by running the same sim
+// again (src/net/replay.ts). That is exact while the sim and the content
+// it reads are the ones that played, and silently wrong the moment they
+// are not: change a champion's damage, an item's price or a house bot's
+// playbook, and yesterday's replay plays out a match that never happened,
+// with no error anywhere. REPLAY_VERSION is the hand-bumped guard against
+// that, and a hand-bumped guard is one somebody forgets.
+//
+// So the record also carries a fingerprint of the content, computed from
+// the tables themselves. A balance change moves it without anybody
+// remembering to, and the viewer says "recorded under an older version"
+// instead of playing a different match.
+//
+// It covers what DECIDES a match, not what dresses it: champions, items,
+// sigils, the map, the house bots and the tick rate. Skins, sounds,
+// names and flavor lines move freely.
+
+import { DT } from '../types';
+import { BOTS } from './bots';
+import { CAMPS_CONTENT } from './camps';
+import { CHAMPION_LIST } from './champions';
+import { ITEM_LIST } from './items';
+import { RINGS_CONTENT } from './rings';
+import { SIGIL_LIST } from './sigils';
+import type { StarOrchard } from './star_orchard';
+import { WARDEN_CONTENT } from './warden';
+
+// FNV-1a over the canonical text: short, stable, and dependency-free. It
+// is a change detector, never a signature: nothing here defends against
+// an attacker, only against our own forgetfulness.
+function hash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+// The walkability grid is a quarter million cells: hashed as numbers, not
+// spelled out as text.
+function hashInt16(values: Int16Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < values.length; i += 1) {
+    h ^= values[i]! & 0xffff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+// JSON with object keys in a fixed order, so the same content always
+// writes the same text whatever order the tables were built in.
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined && typeof v !== 'function')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+}
+
+// The champion as the sim reads it: its body, its growth and its four
+// spells plus the passive. Its name, title and art are not in it.
+function championShape(c: (typeof CHAMPION_LIST)[number]): unknown {
+  return {
+    id: c.id,
+    role: c.role,
+    base: c.base,
+    growth: c.growth,
+    abilities: c.abilities,
+    passive: (c as { passive?: unknown }).passive ?? null,
+  };
+}
+
+// The fingerprint of any content-shaped value: canonical text, then the
+// hash. Exported so a test can prove that a table it changes moves it,
+// which is the only property that matters here.
+export function fingerprintOf(content: unknown): string {
+  return hash(canonical(content));
+}
+
+const cached = new WeakMap<StarOrchard, string>();
+
+// The map is the Star Orchard the host has read (ADR 0021): its record and
+// its grid, since a cell that opens or closes moves the match as surely as
+// a champion's damage does. A new export revision moves the fingerprint.
+export function contentFingerprint(orchard: StarOrchard): string {
+  let value = cached.get(orchard);
+  if (value === undefined) {
+    const grid = orchard.navigation;
+    value = fingerprintOf({
+      dt: DT,
+      champions: CHAMPION_LIST.map(championShape),
+      items: ITEM_LIST,
+      sigils: SIGIL_LIST,
+      // The rings' creatures, clocks and favors (content/rings.ts).
+      rings: RINGS_CONTENT,
+      warden: WARDEN_CONTENT,
+      // The forests' camps (content/camps.ts).
+      camps: CAMPS_CONTENT,
+      map: orchard.map,
+      terrain: {
+        revision: orchard.revision,
+        source: orchard.sourceSha256,
+        cells: grid.cells,
+        cellSize: grid.cellSize,
+        origin: grid.origin,
+        heightScale: grid.heightScale,
+        blockedValue: grid.blockedValue,
+        heights: hashInt16(grid.heights),
+      },
+      // The house bots by what they DO: a policy is code, so the ids
+      // and their playbooks are the most a table can say about them.
+      bots: Object.entries(BOTS)
+        .map(([id, b]) => [id, (b as { playbook?: unknown }).playbook ?? null])
+        .sort(),
+    });
+    cached.set(orchard, value);
+  }
+  return value;
+}
+
+// A record plays out as it was recorded only if BOTH guards agree: the
+// hand-bumped version (a change in the sim's own code) and the content
+// fingerprint (a change in the tables it reads). A record from before the
+// fingerprint existed carries none: it is played, because refusing every
+// replay already on disk would be a worse lie than the one this prevents.
+export function contentMatches(recorded: string | undefined, orchard: StarOrchard): boolean {
+  return recorded === undefined || recorded === contentFingerprint(orchard);
+}

@@ -1,0 +1,37 @@
+{
+  "name": "claude-of-legends",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:server": "node scripts/build_server.mjs",
+    "server": "node scripts/build_server.mjs && node --env-file-if-exists=.env dist-server/server.cjs",
+    "start": "vite build && node scripts/build_server.mjs && node --env-file-if-exists=.env dist-server/server.cjs",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "lint": "biome check .",
+    "build:env": "node scripts/build_env.mjs",
+    "env": "node scripts/build_env.mjs && node dist-env/env.cjs"
+  },
+  "dependencies": {
+    "three": "^0.186.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
+    "@types/node": "^26.6.3",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.2",
+    "puppeteer-core": "^25.10.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.2"
+  }
+}

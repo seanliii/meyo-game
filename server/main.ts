@@ -1,0 +1,3119 @@
+// The authoritative game server: one process, one port. Serves the built
+// client from dist/, upgrades /ws to WebSocket, runs every live match's Sim
+// on a fixed-step 20 Hz accumulator, and streams team-scoped snapshots.
+// Every connection belongs to an account (ADR 0006) or to a Guest (ADR
+// 0024): the upgrade itself is refused without one or the other, so
+// nothing below this line has to wonder who it is talking to. No database still: accounts, sessions and the
+// match log are JSON files under DATA_DIR.
+
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
+import http from 'node:http';
+import path from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { type WebSocket, WebSocketServer } from 'ws';
+import {
+  type ForgedMatchAssets,
+  isFiniteVec,
+  parseClientMsg,
+  type ServerMsg,
+} from '../src/net/protocol';
+import { REPLAY_VERSION } from '../src/net/replay';
+import { contentFingerprint } from '../src/sim/content/fingerprint';
+import type { ForgedChampionDef } from '../src/sim/forge/forged_def';
+import { validateForged } from '../src/sim/forge/validate';
+import { PlayLedger } from '../src/sim/playbook/report';
+import { validatePlaybook } from '../src/sim/playbook/validate';
+import { DT } from '../src/sim/types';
+import { foldName, nameErrorMessage } from './account_name';
+import {
+  type Account,
+  AccountRegistry,
+  publicAccount,
+  type RecruitError,
+  type RegisterError,
+  selfAccount,
+} from './accounts';
+import { CONFIRM_TTL_MS, RESET_TTL_MS, TokenStore } from './action_tokens';
+import { API_RATE_PER_MIN, ApiLimiter } from './api_limit';
+import { ARENA_PLAY_NOW_PER_DAY, ARENA_ROUND_MS } from './arena';
+import { ArenaRunner } from './arena_runner';
+import { type ArenaDeps, challenge, playNow, roundDue, runArenaRound } from './arena_service';
+import { chooseArt, deleteArtFor, generateArt, iconsOf, listArt, splashOf } from './art';
+import { appendExchange, botChat, clearBotChat, windowTurns } from './bot_chats';
+import { fillWithBots, type PoolSeat, TEAM_SIZE } from './bot_fill';
+import { type BotPageDeps, describeBotPage } from './bot_page';
+import {
+  addEntry,
+  getEntry,
+  listEntries,
+  parseUpload,
+  RECORD_UPLOAD_MAX,
+  rowOf,
+} from './bot_records';
+import { BotStore } from './bot_store';
+import { botWayStats } from './bot_way_stats';
+import {
+  type BotDeps,
+  createBot,
+  deleteBot,
+  getVersion,
+  listBots,
+  listVersions,
+  ownedBot,
+  PLAYBOOK_JSON_MAX,
+  revertBot,
+  saveBot,
+  setAutoApply,
+  setDeposited,
+  setOpenPlaybook,
+} from './bots';
+import { buildId, buildInfo, deployStamp, readBuildId } from './build_info';
+import { withBuildTag } from './build_tag';
+import { ConnectionLimiter } from './conn_limit';
+import { clearCookie, parseCookies, serializeCookie } from './cookies';
+import { authorizeUrl, CALLBACK_PATH, DiscordOauth, discordConfigFromEnv } from './discord_oauth';
+import { DiscordFlows } from './discord_state';
+import { displayOf, forgedMatchAssets, modelPointers, setForgedDisplay } from './display';
+import { chooseDropIn, type DropInCandidate, presenceOf } from './drop_in';
+import { clientAddress, edgeConfig, originAllowed } from './edge';
+import { emailErrorMessage } from './email_address';
+import { CLAIM_TTL_MS } from './email_claim';
+import { EMBER_PRICES, EMBERS_PER_WEEK, IMAGE_PRICE_RESOLD } from './embers';
+import { FeedbackStore, parseFeedback } from './feedback';
+import {
+  animateChampion,
+  buildModel,
+  DRAFT_JSON_MAX,
+  deleteDraft,
+  finalizeStatus,
+  forgeWeapon,
+  listDrafts,
+  refreshWeeklyGrant,
+  saveDraft,
+} from './forge';
+import { briefChampion } from './forge_brief';
+import { CHAT_JSON_MAX, chatsOf, saveChat } from './forge_chats';
+import { ForgeStore } from './forge_store';
+import { canPlayForged, listGallery, reportForged, setVisibility, toggleLike } from './gallery';
+import { catalogRoles } from './generation/house_clips';
+import { MockProvider } from './generation/mock';
+import { DEFAULT_IMAGE_MODEL, OpenAIImages } from './generation/openai_images';
+import { downloadToFile, type PipelineDeps, recoverStaleJobs } from './generation/pipeline';
+import { placeholderFor } from './generation/placeholder';
+import { type GenerationProvider, WEAPON_FAMILIES } from './generation/provider';
+import { SplitProvider } from './generation/split';
+import { TripoProvider } from './generation/tripo';
+import { GUEST_COOKIE, GUEST_TTL_MS, GuestStore, guestRefused, ratedWithGuests } from './guests';
+import { buildHomePage } from './home_page';
+import { buildBotLadder, buildLadder } from './ladder';
+import { type BotSummary, buildLadderPage, type LadderSeed, placeOf } from './ladder_page';
+import { buildLandingPage } from './landing_page';
+import {
+  backfillLaurels,
+  CHAMPION_PRICES,
+  playableAt,
+  rotationAt,
+  STARTER_COLLECTION,
+} from './laurels';
+import { accountKey, addressKey, LoginThrottle } from './login_throttle';
+import { confirmMail, confirmUrl, publicOrigin, resetMail, resetUrl } from './mail_messages';
+import { mailerFromEnv } from './mailer';
+import { AFK_IDLE_TICKS, Match, type MatchPick } from './match';
+import { type OwnedSeat, type RatingBook, rateMatch } from './match_rating';
+import { Matchmaker, type MatchSource } from './matchmaker';
+import {
+  answerProposal,
+  buildBriefing,
+  type NightCoachDeps,
+  nightDue,
+  runNight,
+} from './night_coach';
+import { COACH_IDLE_DAYS } from './night_eligibility';
+import { passwordErrorMessage, validatePassword } from './password';
+import { type CoachDeps, coachPlaybook } from './playbook_suggest';
+import { PracticeReportStore, parsePracticeReport } from './practice_reports';
+import { buildProfile } from './profile';
+import { CEILING_DEFAULTS, checkQuota, DAY_MS, spendQuota } from './quotas';
+import { BASE_RATING, LEAVER_LOCKOUT_MS, leaverPenalty } from './rating';
+import { talliesOf } from './record_tally';
+import { buildMatchRecord, type MatchRecord } from './records';
+import { checkReference, refusalMessage } from './reference_check';
+import { setForgedAttackRange } from './reforge';
+import { RejoinRegistry } from './rejoin';
+import { sealChampion, unsealChampion } from './seal';
+import { COOKIE_NAME, SESSION_TTL_MS, SessionStore } from './sessions';
+import { starOrchard } from './star_orchard';
+import { isWebsiteId, STATS_SCRIPT, withStatsTag } from './stats_tag';
+import {
+  appendJsonl,
+  maxNumberedJson,
+  pruneNumberedJson,
+  readJsonl,
+  saveJsonAtomic,
+} from './store';
+import { suggestKit } from './suggest';
+import { suggestLook } from './suggest_look';
+import { suggestStats } from './suggest_stats';
+import { formatTickReport, TickMeter } from './tick_meter';
+import {
+  nextVisit,
+  VISIT_COOKIE,
+  VISIT_MAX_AGE_S,
+  visitChoice,
+  visitIdOf,
+  withVisitTag,
+} from './visit_cookie';
+import { type WayStats, wayStatsOf } from './way_stats';
+import { playedByHand, seatWay, type Way } from './ways';
+
+const PORT = Number(process.env.PORT ?? 8787);
+const HOST = process.env.HOST?.trim() || undefined;
+const DIST = path.resolve(process.cwd(), 'dist');
+// The bundle this process serves, for the clients to compare against
+// their own (server/build_info.ts); null in development, where Vite
+// serves the page.
+// The bundle this server serves and the stamp of this deployment, as one
+// id the page carries and /api/public/build repeats (server/build_tag.ts).
+const BUILD_ID = buildId(readBuildId(DIST), deployStamp());
+// Runtime state on disk: account identities and the match log. DATA_DIR is
+// the volume to mount in production; nothing else persists.
+const DATA_DIR = process.env.DATA_DIR ?? path.resolve(process.cwd(), 'data');
+const TICK_MS = DT * 1000;
+const MATCH_LINGER_MS = 20_000;
+// How long a match with zero connected players keeps running so a dropped
+// player (or a reloading solo player) can claim their seat back.
+const REJOIN_GRACE_MS = 60_000;
+const MAX_MSG_BYTES = 4096;
+const MAX_MSGS_PER_SEC = 60;
+// Abuse bound on live sims per process. Sockets per address are capped by
+// server/conn_limit.ts.
+const MAX_MATCHES = 50;
+// What to believe about a connection that came through a proxy: how deep
+// the forwarded chain is (TRUST_PROXY) and which pages may open a socket
+// besides our own (ALLOWED_ORIGINS). Both default to trusting nothing.
+const EDGE = edgeConfig(process.env);
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.map': 'application/json',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  // The landing art is the one jpg in the tree, and the first thing a
+  // visitor loads. Without this it went out as application/octet-stream,
+  // which browsers sniff past for an <img> but which makes the preload
+  // link in ui/home_backdrop.ts a coin flip.
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  // The display face, self-hosted (PRIVACY.md). A font sent as
+  // application/octet-stream is refused outright by a browser that trusts
+  // nosniff, and the page silently falls back to Georgia.
+  '.woff2': 'font/woff2',
+  '.svg': 'image/svg+xml',
+  '.glb': 'model/gltf-binary',
+  '.wasm': 'application/wasm',
+  // The recorded sound bank (public/sfx/).
+  '.ogg': 'audio/ogg',
+};
+
+interface Client {
+  id: number;
+  ws: WebSocket;
+  // Both settled on the upgrade, from the session cookie: there is no
+  // anonymous window in which a client exists without an account. A
+  // Guest's id is negative (server/guests.ts) and no account lookup made
+  // with it finds anything.
+  accountId: number;
+  name: string;
+  // A Guest (ADR 0024): the public queue and the match it lands in, and
+  // nothing else.
+  guest: boolean;
+  // The session this socket came in on, so closing it can be traced back
+  // to a logout elsewhere.
+  sessionId: string;
+  matchId: number | null;
+  msgWindowStart: number;
+  msgCount: number;
+}
+
+const clients = new Map<number, Client>();
+interface MatchEntry {
+  match: Match;
+  endedAt: number | null;
+  failures: number;
+  // Set when the last connected player drops; the match survives a grace
+  // window for rejoins instead of being reaped on the spot.
+  abandonedAt: number | null;
+  // Only public-queue matches can be rated; a private lobby never is
+  // (it would be a boosting machine otherwise).
+  ratedEligible: boolean;
+  // Bot seats by unit id (ADR 0013): the owning account and the seat name,
+  // kept here because a coach may close the tab and still be rated; the
+  // bot and its version, for the Record written at the end.
+  botSeats: Map<number, { accountId: number; name: string; botId?: string; version?: number }>;
+  // A public classic-queue match, the only kind a newcomer drops into
+  // (ADR 0025).
+  publicQueue: boolean;
+  // Who took a bot's seat after the start (ADR 0025): never rated for it,
+  // never recorded under it, never a leaver.
+  dropIns: Set<number>;
+  // Time and deaths per play for the bot seats' Records (src/sim/playbook/report.ts).
+  ledger: PlayLedger;
+  // A Forge-queue match: its deltas land on the Forge queue's own rating
+  // (ADR 0011), never the classic ladder.
+  forge: boolean;
+}
+const matches = new Map<number, MatchEntry>();
+// Abandoned seats and leaver lockouts, both keyed on the account
+// (server/rejoin.ts): the seat comes back on whatever device its owner
+// logs in from, and the lockout follows the person who earned it.
+const rejoins = new RejoinRegistry();
+let nextClientId = 1;
+let nextMatchId = 1;
+
+const registry = new AccountRegistry(path.join(DATA_DIR, 'accounts.json'));
+// What practice matches send at their end (server/practice_reports.ts):
+// one line each, read by scripts/practice.mjs and nothing else.
+const practiceReports = new PracticeReportStore(path.join(DATA_DIR, 'practice.jsonl'));
+// What players write in the feedback box (server/feedback.ts): one line
+// each, read with scripts/feedback.mjs and by nothing else.
+const feedback = new FeedbackStore(path.join(DATA_DIR, 'feedback.jsonl'));
+const sessions = new SessionStore(path.join(DATA_DIR, 'sessions.json'));
+// Guests (ADR 0024), in memory only: a restart forgets them.
+const guests = new GuestStore();
+// What a wrong password costs the next attempt (server/login_throttle.ts).
+const logins = new LoginThrottle();
+// One-time links for confirming an address and for resetting a password
+// (ADR 0007). Persisted, because a deploy replaces the container and every
+// pending link in somebody's inbox would die with it.
+const tokens = new TokenStore(path.join(DATA_DIR, 'tokens.json'));
+// Asking for a reset makes this server send mail to a third party, so it
+// is rate limited per address on its own budget. "Attempt" here means
+// "request", not "wrong guess": the cost is the mail, not the mistake.
+const resets = new LoginThrottle();
+// A third party this process talks to, and only outbound. Without
+// MAIL_API_KEY it logs links instead of sending them, and says so at boot.
+const mailer = mailerFromEnv(process.env);
+// What the links in those mails point at.
+const ORIGIN = publicOrigin(process.env, EDGE.origins, PORT);
+// The other one, and it is entirely optional (ADR 0009): without the two
+// Discord secrets the routes below answer "not configured", the client
+// never offers the button, and everything else works exactly as before.
+const DISCORD = discordConfigFromEnv(process.env, ORIGIN);
+const discord = DISCORD ? new DiscordOauth(DISCORD) : null;
+// The anti-forgery states in flight. In memory only: a state is minutes
+// old and its owner is watching.
+const discordFlows = new DiscordFlows();
+// The Forge's own store (ADR 0011): SQLite for forged champions, the
+// creation ledger, and generation jobs; accounts stay in their JSON
+// registry and rows here reference their ids.
+const forgeStore = new ForgeStore(path.join(DATA_DIR, 'forge.sqlite3'));
+// Bots on the account (ADR 0013): their own SQLite beside the Forge's, so
+// the two land in parallel without sharing a file or a module.
+const botStore = new BotStore(path.join(DATA_DIR, 'bots.sqlite3'));
+// The audience counter's site (PRIVACY.md, docs/deploy.md): the id Umami
+// gave this deployment, and the one value from the environment that
+// reaches the page. Empty, or not an id, and the page goes out without
+// the tag; the boot line says which.
+const STATS_WEBSITE_ID = (process.env.STATS_WEBSITE_ID ?? '').trim();
+const STATS_ON = isWebsiteId(STATS_WEBSITE_ID);
+// Where every generated file lives (splash candidates, model sheets,
+// models), served back to logged-in clients by the asset route below.
+const ASSETS_DIR = path.join(DATA_DIR, 'assets');
+// The generation provider (ADR 0010): Tripo with a key, the mock when
+// asked for keyless dev, otherwise absent and finalize says so.
+function generationFromEnv(): PipelineDeps | null {
+  let provider: GenerationProvider | null = null;
+  // What one image costs here. It follows the provider that ends up
+  // making it, because the same act has two prices now (server/embers.ts).
+  let imagePrice = IMAGE_PRICE_RESOLD;
+  if (process.env.TRIPO_API_KEY) {
+    const tripo = new TripoProvider(process.env.TRIPO_API_KEY, {
+      ...(process.env.TRIPO_IMAGE_MODEL ? { imageModel: process.env.TRIPO_IMAGE_MODEL } : {}),
+    });
+    provider = tripo;
+    // The 2D bought where it is made: OpenAI sells the model Tripo
+    // resells, at less than half (server/generation/openai_images.ts).
+    // The 3D stays with Tripo, which is the only one that makes any.
+    if (process.env.OPENAI_API_KEY) {
+      const art = new OpenAIImages(process.env.OPENAI_API_KEY, {
+        ...(process.env.OPENAI_IMAGE_MODEL ? { model: process.env.OPENAI_IMAGE_MODEL } : {}),
+        ...(process.env.OPENAI_IMAGE_SIZE ? { size: process.env.OPENAI_IMAGE_SIZE } : {}),
+        ...(process.env.OPENAI_IMAGE_QUALITY ? { quality: process.env.OPENAI_IMAGE_QUALITY } : {}),
+      });
+      provider = new SplitProvider(art, tripo, { stageDir: path.join(DATA_DIR, 'staged') });
+      imagePrice = EMBER_PRICES.image;
+      console.log(
+        `generation: 2D on OpenAI (${process.env.OPENAI_IMAGE_MODEL || DEFAULT_IMAGE_MODEL}), ` +
+          `3D on Tripo; an image costs ${imagePrice} embers instead of ${IMAGE_PRICE_RESOLD}`,
+      );
+    }
+    // Fire and forget: the balance names the key live (or not) at boot
+    // without holding the server's start on a third party.
+    void tripo.balance().then((credits) => {
+      console.log(
+        `generation: tripo (TRIPO_API_KEY set), real generations from here on; ` +
+          `credit balance ${credits < 0 ? 'unavailable' : credits}`,
+      );
+    });
+  } else if (process.env.GENERATION_PROVIDER === 'mock') {
+    console.log('generation: mock provider (GENERATION_PROVIDER=mock), placeholder assets');
+    provider = new MockProvider();
+    imagePrice = EMBER_PRICES.image;
+  }
+  if (!provider) return null;
+  return {
+    storage: forgeStore,
+    provider,
+    imagePrice,
+    assetsDir: ASSETS_DIR,
+    // The house clip library ships inside the served client build.
+    publicDir: DIST,
+    // Per-champion asset budgets (ADR 0010), server-configurable like
+    // every other number in the plan; zero disables one.
+    budgets: {
+      imageKb: envNumber('ASSET_MAX_IMAGE_KB', 4096),
+      // A real five-clip baked GLB measured 58 MB live (2026-08-31): the
+      // ceiling bounds abuse, not the normal case, until compression
+      // tuning lands.
+      modelKb: envNumber('ASSET_MAX_MODEL_KB', 81920),
+    },
+    download:
+      provider.id === 'mock'
+        ? (url, dest) => {
+            // Mock URLs are not fetchable; a real placeholder (a valid PNG
+            // or animated GLB, picked by extension) stands in so every
+            // surface downstream renders something honest in keyless dev.
+            mkdirSync(path.dirname(dest), { recursive: true });
+            writeFileSync(dest, placeholderFor(url, dest));
+            return Promise.resolve();
+          }
+        : downloadToFile,
+  };
+}
+const generation = generationFromEnv();
+{
+  // A crash mid-generation is swept on boot: the job fails, the creation
+  // refunds.
+  const swept = recoverStaleJobs(forgeStore);
+  if (swept > 0) console.log(`generation: refunded ${swept} job(s) killed by the last shutdown`);
+}
+// Every plan number is server-configurable (plan-forge phase 8); an unset
+// or unparseable variable falls back, so a compose pass-through of an
+// empty string never silently becomes zero.
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+const botDeps: BotDeps = {
+  store: botStore,
+  botCap: envNumber('BOT_CAP', 100),
+  depositCap: envNumber('BOT_DEPOSIT_CAP', 3),
+  // The collection alone, without the week's rotation: a bot outlives the
+  // week it was made in, and one written on a rotating champion would
+  // stop being fieldable on the Monday (ADR 0018).
+  collectionOf: (accountId) => registry.collection(accountId),
+};
+// The Bot page (server/bot_page.ts): the store and the owner's name.
+const botPageDeps: BotPageDeps = {
+  store: botStore,
+  ownerName: (accountId) => registry.findById(accountId)?.name ?? null,
+};
+// The coach behind the Academy: the same key as the kit conversation,
+// one model, depth as effort.
+const coachDeps: CoachDeps = {
+  store: botStore,
+  apiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+  ...(process.env.BOT_COACH_MODEL?.trim() ? { model: process.env.BOT_COACH_MODEL.trim() } : {}),
+  // The calibration log and the ledger both live in the Forge store, for
+  // every paid act in the game and not only the Forge's own (ADR 0017).
+  spend: (sample) => forgeStore.addSpendSample(sample),
+  charge: (accountId, embers, ref) =>
+    forgeStore.addCreditEntry({
+      accountId,
+      delta: -embers,
+      reason: 'spend',
+      ref,
+      at: Date.now(),
+    }),
+  balance: (accountId) => forgeStore.creditBalance(accountId),
+};
+const forgeDeps = {
+  store: forgeStore,
+  generation,
+  emberGrant: envNumber('EMBERS_PER_WEEK', EMBERS_PER_WEEK),
+  draftCap: envNumber('FORGE_DRAFT_CAP', 50),
+};
+// The gallery (plan-forge phase 7) shares the store; the takedown
+// threshold is server-configurable like the creation grant.
+const galleryDeps = {
+  store: forgeStore,
+  reportThreshold: envNumber('REPORT_TAKEDOWN_THRESHOLD', 3),
+};
+// The server's daily ceilings (ADR 0017). What one account may spend is
+// its ember balance; these bound what every account together may ask for
+// in a rolling day, which no per-account number can. Zero disables one.
+const quotaDeps = {
+  store: forgeStore,
+  ceilings: {
+    generation: envNumber('SERVER_GENERATIONS_PER_DAY', CEILING_DEFAULTS.generation),
+    animate: envNumber('SERVER_ANIMATIONS_PER_DAY', CEILING_DEFAULTS.animate),
+    gen2d: envNumber('SERVER_2D_PER_DAY', CEILING_DEFAULTS.gen2d),
+    agent: envNumber('SERVER_AGENT_PER_DAY', CEILING_DEFAULTS.agent),
+  },
+};
+// Kit suggestions from the splash art (the agent surface): behind an
+// Anthropic key, answering honestly when unconfigured, on the 'agent'
+// meter that has waited for it.
+const suggestDeps = {
+  store: forgeStore,
+  apiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+  assetsDir: ASSETS_DIR,
+  ...(process.env.SUGGEST_MODEL?.trim() ? { model: process.env.SUGGEST_MODEL.trim() } : {}),
+};
+console.log(
+  suggestDeps.apiKey
+    ? 'suggestions: on (ANTHROPIC_API_KEY set), the kit, stat and look conversations are live'
+    : 'suggestions: off (no ANTHROPIC_API_KEY set)',
+);
+// The reference check rides the same key: one small look at the chosen
+// reference at the build's classify stage, where stopping is still free
+// (server/reference_check.ts). Without a key there is no check and
+// builds run exactly as they did.
+if (generation && suggestDeps.apiKey) {
+  generation.checkReference = (image) =>
+    checkReference(suggestDeps, image).then((v) =>
+      v === null || v.usable ? null : refusalMessage(v),
+    );
+  console.log('generation: the model reference is read before a build spends on it');
+}
+// The 2D art surface (plan-forge phase 4): splash and icon candidates on
+// the gen2d meter, sharing the pipeline's provider and assets dir.
+const artDeps = {
+  store: forgeStore,
+  generation,
+  quota: quotaDeps,
+  historyCap: envNumber('ART_HISTORY_CAP', 12),
+};
+// The blanket per-address rate limit over /api (phase 8); the login
+// throttle keeps its own sharper backoff. Zero disables it.
+const apiLimiter = new ApiLimiter(envNumber('API_RATE_PER_MIN', API_RATE_PER_MIN));
+
+const MATCHES_FILE = path.join(DATA_DIR, 'matches.jsonl');
+const REPLAYS_DIR = path.join(DATA_DIR, 'replays');
+// How many finished-match replays stay on disk (named by match id).
+const REPLAY_KEEP = 40;
+// The whole log stays in memory for profile queries; one line per match,
+// appended as each ends (kilobytes each, guests-scale).
+const matchLog: MatchRecord[] = readJsonl<MatchRecord>(MATCHES_FILE);
+
+// One finished match pays its hand seats (ADR 0018). Called on every
+// recorded match, Arena included, because the way is what decides: an
+// Arena round or a seat the owner's bot played answers false here, so a
+// playbook running overnight earns its owner nothing.
+function payLaurels(rec: MatchRecord): void {
+  for (const seat of rec.players) {
+    if (seat.accountId === null) continue;
+    if (!playedByHand(seatWay(rec, seat))) continue;
+    registry.award(seat.accountId, seat.team === rec.winner, rec.at, rec.rated);
+  }
+}
+
+// A refusal names which of the three it is and what to do about it: a
+// shop that just says no teaches nothing (ADR 0017's rule about walls
+// that never state their number).
+const RECRUIT_REFUSALS: Readonly<Record<RecruitError, string>> = {
+  unknown_account: 'This needs an account.',
+  not_for_sale: 'That champion is not for sale.',
+  already_owned: 'That champion is already in your collection.',
+  not_enough_laurels: 'Not enough laurels for that champion yet.',
+};
+
+// The crossing into the laurel economy, once per account and never again
+// (ADR 0018): what its recorded matches would have earned. Absent laurels
+// is what marks an account as uncounted, so this is idempotent and runs
+// on every boot for the sake of accounts made while it was already past.
+function seedStandingAccounts(): void {
+  let seeded = 0;
+  for (const a of registry.all()) {
+    const { laurels, lastWinDay } = backfillLaurels(matchLog, a.id);
+    if (registry.seedLaurels(a.id, laurels, lastWinDay)) seeded++;
+  }
+  if (seeded > 0) console.log(`laurels: ${seeded} account(s) credited from the match log`);
+}
+seedStandingAccounts();
+// Match ids restart above everything already on disk: a replay file, a
+// replay a Record entry still holds, a match log line. Ids name replay
+// files, so an id handed out twice would overwrite a replay an older
+// entry still points at, and its Match sheet would open somebody else's
+// match.
+nextMatchId = maxNumberedJson(REPLAYS_DIR) + 1;
+for (const id of botStore.heldReplayIds()) if (id >= nextMatchId) nextMatchId = id + 1;
+for (const m of matchLog)
+  if (m.replayId !== undefined && m.replayId >= nextMatchId) nextMatchId = m.replayId + 1;
+// The Arena (docs/design/bots.md): matches off the live loop in a worker
+// thread bundled beside the server, inline when the bundle is missing
+// (a dev host running the TypeScript straight). Match ids are shared with
+// live matches so replay ids never collide.
+const ARENA_WORKER = path.join(__dirname, 'arena_worker.cjs');
+const arenaRunner = new ArenaRunner(existsSync(ARENA_WORKER) ? ARENA_WORKER : null);
+const arenaDeps: ArenaDeps = {
+  store: botStore,
+  runner: arenaRunner,
+  nameOf: (aid) => registry.findById(aid)?.name ?? null,
+  nextMatchId: () => nextMatchId++,
+  saveReplay: (id, record) => {
+    saveJsonAtomic(path.join(REPLAYS_DIR, `${id}.json`), record);
+    pruneNumberedJson(REPLAYS_DIR, REPLAY_KEEP, botStore.heldReplayIds());
+  },
+  recordMatch: (rec) => {
+    matchLog.push(rec);
+    appendJsonl(MATCHES_FILE, rec);
+    payLaurels(rec);
+  },
+  roundMs: envNumber('ARENA_ROUND_MINUTES', 60) * 60_000,
+  playNowPerDay: envNumber('ARENA_PLAY_NOW_PER_DAY', ARENA_PLAY_NOW_PER_DAY),
+  log: (line) => console.log(line),
+};
+// The night coach (docs/design/bots.md): the same coach as the Academy,
+// asked once per bot per night about its Arena report; sparring on the
+// Arena's runner decides whether the proposal stands.
+const nightCoachDeps: NightCoachDeps = {
+  store: botStore,
+  runner: arenaRunner,
+  coach: coachDeps.apiKey
+    ? (accountId, botId, message) =>
+        // Marked as the night's own spend: nobody is watching this one,
+        // which is exactly what makes it worth telling apart.
+        coachPlaybook({ ...coachDeps, spendDetail: 'night' }, accountId, {
+          id: botId,
+          messages: [{ role: 'user', text: message }],
+          depth: 'quick',
+        })
+    : null,
+  records: () => matchLog,
+  // The night's model call is the only paid step; it is spent on bots
+  // whose owner is still around (server/night_eligibility.ts).
+  ownerSeenAt: (accountId) => registry.findById(accountId)?.seenAt ?? null,
+  idleDays: envNumber('COACH_IDLE_DAYS', COACH_IDLE_DAYS),
+  sparringPerSide: envNumber('SPARRING_PER_SIDE', 3),
+  log: (line) => console.log(line),
+};
+
+// What a refused registration says, one line per way it can be refused.
+// A table rather than a chain of ternaries, so a new way to be refused is
+// one line and cannot be dropped by accident.
+const REGISTER_ERRORS: Record<RegisterError, string> = {
+  name_invalid: nameErrorMessage('charset'),
+  name_taken: 'That name is taken.',
+  password_invalid: passwordErrorMessage('too_short'),
+  email_invalid: emailErrorMessage('shape'),
+  email_taken: 'An account already uses that email address.',
+};
+
+// The public shape of an account: publicAccount() drops the credential by
+// construction rather than by deletion, and tests/architecture.test.ts
+// holds that line for every route that ever serialises one.
+// The account's ranked bots, for the ladder's detail and the bot ladders'
+// rows: a page and a challenge each (CONTEXT.md: Bot page, Challenge).
+function rankedBotsOf(accountId: number): BotSummary[] {
+  return botStore
+    .listByAccount(accountId)
+    .filter((b) => b.deposited)
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      championId: b.championId,
+      tally: botStore.ratedTally(b.id),
+    }));
+}
+
+function describeAccount(a: Account): unknown {
+  return {
+    ...publicAccount(a),
+    profile: buildProfile(matchLog, a.id),
+    bots: rankedBotsOf(a.id),
+  };
+}
+
+// The ratings of one way (CONTEXT.md: Way), wherever that way keeps them:
+// the registry by hand, the bot store live and in the Arena, the Forge
+// store for its queue. What the ladder page and the account's place rank.
+// The seeds of one ladder, one per rated subject (ADR 0016): accounts on
+// the hand and Forge ways, bots on the two bot ways.
+function ladderSeeds(way: Way): LadderSeed[] {
+  if (way === 'hand') {
+    return registry.all().map((a) => ({
+      id: a.id,
+      accountId: a.id,
+      name: a.name,
+      rating: a.rating,
+      games: a.ratedGames,
+      createdAt: a.createdAt,
+    }));
+  }
+  if (way === 'forge') {
+    return forgeStore.listForgeRatings().map((r) => ({
+      id: r.accountId,
+      accountId: r.accountId,
+      name: registry.findById(r.accountId)?.name ?? null,
+      rating: r.rating,
+      games: r.games,
+    }));
+  }
+  return botStore.listBotRatings(way === 'bot' ? 'live' : 'arena').map((r) => {
+    const bot = botStore.getBot(r.botId);
+    const owner = registry.findById(r.accountId)?.name ?? null;
+    return {
+      id: r.botId,
+      accountId: r.accountId,
+      // A bot whose row outlived it, or whose owner is gone, does not place.
+      name: bot && owner !== null ? bot.name : null,
+      owner,
+      ...(bot ? { championId: bot.championId } : {}),
+      rating: r.rating,
+      games: r.games,
+      ...(bot ? { createdAt: bot.createdAt } : {}),
+    };
+  });
+}
+
+// What the match log or the bots' Records say of every subject on a way.
+function wayStatsFor(way: Way): Map<string | number, WayStats> {
+  if (way === 'bot' || way === 'arena') {
+    const out = new Map<string | number, WayStats>();
+    for (const r of botStore.listBotRatings(way === 'bot' ? 'live' : 'arena')) {
+      const bot = botStore.getBot(r.botId);
+      if (!bot) continue;
+      out.set(r.botId, botWayStats(listEntries(botStore, r.botId), way, bot.championId));
+    }
+    return out;
+  }
+  return new Map<string | number, WayStats>(wayStatsOf(matchLog, way));
+}
+
+const WAYS: readonly Way[] = ['hand', 'bot', 'arena', 'forge'];
+function wayParam(rawUrl: string | undefined): Way | null {
+  const way = new URLSearchParams((rawUrl ?? '').split('?')[1] ?? '').get('way') ?? 'hand';
+  return (WAYS as readonly string[]).includes(way) ? (way as Way) : null;
+}
+
+// The same, for the owner asking about themselves: it adds the address
+// they registered with and whether it is confirmed, which nobody else may
+// see. /api/account/:id stays on describeAccount for exactly that reason.
+function describeSelf(a: Account): unknown {
+  // The ember balance rides the account's own sheet (ADR 0017): it is
+  // spent in the Forge and in the Academy both, so it belongs to neither
+  // of them and to the account instead. Asking refreshes the weekly
+  // grant, like every other Forge surface does.
+  refreshWeeklyGrant(forgeDeps, a.id);
+  return {
+    ...selfAccount(a),
+    profile: buildProfile(matchLog, a.id),
+    embers: forgeStore.creditBalance(a.id),
+    embersPerWeek: envNumber('EMBERS_PER_WEEK', EMBERS_PER_WEEK),
+  };
+}
+
+// Issues a fresh confirmation link and mails it. Deliberately not awaited
+// by its callers: a slow relay must not hold a registration open, and the
+// account works perfectly well unconfirmed (ADR 0007).
+async function sendConfirmation(account: Account): Promise<void> {
+  if (!account.email || account.email.confirmed) return;
+  const token = tokens.issue('confirm', account.id, account.email.address, Date.now());
+  const sent = await mailer.send(
+    confirmMail(
+      account.email.address,
+      account.name,
+      confirmUrl(ORIGIN, token.token),
+      CONFIRM_TTL_MS,
+    ),
+  );
+  // The address is a player's and stays out of the log; the id is enough
+  // to find them if someone reports never getting their mail.
+  if (!sent) console.error(`confirmation mail not delivered for account ${account.id}`);
+}
+
+function send(clientId: number, msg: ServerMsg): void {
+  const c = clients.get(clientId);
+  if (!c || c.ws.readyState !== c.ws.OPEN) return;
+  const text = JSON.stringify(msg);
+  meter.sent(text.length);
+  c.ws.send(text);
+}
+
+// The match_start block carrying the forged definitions, when the match
+// has any: sent at setup, on rejoin, and to spectators alike, so every
+// mirror world can resolve a forged champion before its first snapshot.
+// Each definition rides with its sealed asset pointers (model path, weapon
+// family, display tuning), so every client in the match can load the
+// generated model instead of the procedural figure.
+function forgedPayload(match: Match): {
+  forged?: ForgedChampionDef[];
+  forgedAssets?: Record<string, ForgedMatchAssets>;
+} {
+  if (match.forgedDefs.length === 0) return {};
+  return {
+    forged: [...match.forgedDefs],
+    forgedAssets: forgedMatchAssets(forgeStore, match.forgedDefs),
+  };
+}
+
+// Both queues (classic and Forge) start their matches the same way; the
+// flag only decides which ladder the result will move.
+function onMatchReady(forge: boolean) {
+  return (picks: MatchPick[], source: MatchSource) => {
+    const id = nextMatchId++;
+    const seed = (Date.now() % 2_000_000_000) + id;
+    // The ranked pool fills before house bots (docs/design/bots.md): every
+    // ranked bot whose account holds no seat here is a candidate, seated
+    // from the seed, rated on its account's live way at the end.
+    const present = new Set<number>();
+    for (const p of picks) {
+      const c = clients.get(p.clientId);
+      if (c) present.add(c.accountId);
+    }
+    const pool: PoolSeat[] = [];
+    for (const bot of botStore.listDeposited()) {
+      if (present.has(bot.accountId)) continue;
+      const owner = registry.findById(bot.accountId)?.name;
+      if (owner) pool.push({ bot, owner });
+    }
+    const seated = fillWithBots(picks, seed, TEAM_SIZE, pool);
+    const match = new Match(seed, seated);
+    const botSeats = new Map<
+      number,
+      { accountId: number; name: string; botId?: string; version?: number }
+    >();
+    for (const p of seated) {
+      if (p.playbook === undefined) continue;
+      if (p.ownerId !== undefined) {
+        // A pool seat: nobody connected; the unit id is the seat's index in
+        // pick order, as buildMatchSim allocates them.
+        const unitId = match.unitIdOfPick(seated.indexOf(p));
+        if (unitId !== undefined) {
+          botSeats.set(unitId, {
+            accountId: p.ownerId,
+            name: p.name,
+            ...(p.botId !== undefined ? { botId: p.botId } : {}),
+            ...(p.botVersion !== undefined ? { version: p.botVersion } : {}),
+          });
+        }
+        continue;
+      }
+      const c = clients.get(p.clientId);
+      const player = match.players.get(p.clientId);
+      if (c && player) {
+        botSeats.set(player.unitId, {
+          accountId: c.accountId,
+          name: p.name,
+          ...(p.botId !== undefined ? { botId: p.botId } : {}),
+          ...(p.botVersion !== undefined ? { version: p.botVersion } : {}),
+        });
+      }
+    }
+    matches.set(id, {
+      match,
+      endedAt: null,
+      failures: 0,
+      abandonedAt: null,
+      // A Guest seated by hand makes it unrated for everyone (ADR 0024).
+      ratedEligible: ratedWithGuests(
+        source === 'queue',
+        picks.flatMap((p) => {
+          const c = clients.get(p.clientId);
+          return c ? [c.accountId] : [];
+        }),
+      ),
+      forge,
+      botSeats,
+      publicQueue: source === 'queue' && !forge,
+      dropIns: new Set(),
+      ledger: new PlayLedger(),
+    });
+    for (const p of picks) {
+      const c = clients.get(p.clientId);
+      if (!c) continue;
+      c.matchId = id;
+      const player = match.players.get(p.clientId);
+      if (player) {
+        send(p.clientId, {
+          t: 'match_start',
+          selfUnitId: player.unitId,
+          team: p.team,
+          ...(player.coach ? { coach: true as const } : {}),
+          ...forgedPayload(match),
+        });
+      }
+    }
+    console.log(`match ${id} started with ${picks.length} player(s)${forge ? ' (forge)' : ''}`);
+  };
+}
+
+// A Guest picks from what a fresh account holds (ADR 0024).
+function collectionOfClient(c: Client): string[] {
+  return c.guest ? [...STARTER_COLLECTION] : registry.collection(c.accountId);
+}
+
+const matchmaker = new Matchmaker(send, onMatchReady(false), undefined, {
+  // What this client may pick of the roster (ADR 0018): its collection
+  // plus the week's rotation. A client with no account picks nothing here
+  // anyway, so answering null for one leaves the wall to the account wall.
+  resolvePlayable: (clientId) => {
+    const c = clients.get(clientId);
+    if (!c) return null;
+    return playableAt(collectionOfClient(c), Date.now());
+  },
+  // Bot seats (ADR 0013): the resolver is the account boundary, answering
+  // with the seat when THIS client owns the bot, re-validated so a stored
+  // playbook that predates a validator tightening never reaches a match.
+  resolveBot: (clientId, botId) => {
+    const c = clients.get(clientId);
+    if (!c) return null;
+    const bot = botStore.getBot(botId);
+    if (!bot || bot.accountId !== c.accountId) return null;
+    const v = validatePlaybook(bot.playbook);
+    if (!v.ok) return null;
+    return {
+      name: bot.name,
+      championId: bot.championId,
+      sigils: bot.sigils,
+      skin: bot.skin,
+      playbook: v.def,
+      botId: bot.id,
+      version: bot.version,
+    };
+  },
+});
+// The Forge queue (plan-forge phase 6): a second matchmaker whose selects
+// offer forged champions. The resolver is the account boundary: the
+// owner's finalized champions and anyone's shared ones (the gallery rule,
+// server/gallery.ts), re-validated so a stored def that predates a
+// validator tightening cannot reach match setup (where the registry
+// throws on invalid input).
+const forgeMatchmaker = new Matchmaker(send, onMatchReady(true), undefined, {
+  forge: true,
+  // What this client may pick of the roster (ADR 0018): its collection
+  // plus the week's rotation. A client with no account picks nothing here
+  // anyway, so answering null for one leaves the wall to the account wall.
+  resolvePlayable: (clientId) => {
+    const c = clients.get(clientId);
+    if (!c) return null;
+    return playableAt(collectionOfClient(c), Date.now());
+  },
+  resolveForged: (clientId, championId) => {
+    const c = clients.get(clientId);
+    if (!c) return null;
+    const row = forgeStore.getForged(championId);
+    if (!row || !canPlayForged(row, c.accountId)) return null;
+    return validateForged(row.def).ok ? row.def : null;
+  },
+});
+// Every pre-match surface acts on both queues: a message routes to the one
+// holding the client and no-ops on the other.
+const matchmakers = [matchmaker, forgeMatchmaker];
+
+// A player leaves a live match FOR GOOD, by choice or by the AFK sweep:
+// rated walk-out penalty and queue lockout when it applies, champion to a
+// bot with NO seat reservation, team notice, abandon check. Reservations
+// are for dropped connections only.
+function walkOutOfMatch(client: Client, entry: MatchEntry, matchId: number): void {
+  client.matchId = null;
+  rejoins.drop(client.accountId);
+  // A coach walking out leaves nothing behind: the bot keeps playing, so
+  // there is no leaver to punish.
+  const coach = entry.match.players.get(client.id)?.coach === true;
+  // A seat taken mid-match was never rated, so leaving it costs nothing.
+  const droppedIn = entry.dropIns.has(client.accountId);
+  if (entry.ratedEligible && entry.match.sim.winner === null && !coach && !droppedIn) {
+    const humansByTeam: [number, number] = [0, 0];
+    for (const p of entry.match.players.values()) {
+      if (clients.has(p.clientId)) humansByTeam[p.team] += 1;
+    }
+    const penalty = leaverPenalty(humansByTeam);
+    const account = registry.findById(client.accountId);
+    if (penalty > 0 && account) {
+      // The walk-out costs the ladder it was climbing: the Forge queue's
+      // own rating for a Forge match, the classic one otherwise. The
+      // lockout is shared; leaving is leaving.
+      if (entry.forge) forgeStore.penalizeForgeRating(account.id, penalty);
+      else registry.penalize(account.id, penalty);
+      rejoins.lockQueue(client.accountId, Date.now() + LEAVER_LOCKOUT_MS);
+      console.log(
+        `match ${matchId}: ${client.name} left a rated match (-${penalty}, queue locked)`,
+      );
+    }
+  }
+  const left = entry.match.handleDisconnect(client.id);
+  if (left) {
+    for (const cid of entry.match.players.keys()) {
+      send(cid, { t: 'player_left', name: left.name, team: left.team });
+    }
+  }
+  const anyConnected = [...entry.match.players.keys()].some((cid) => clients.has(cid));
+  if (!anyConnected && entry.abandonedAt === null) {
+    entry.abandonedAt = Date.now();
+    console.log(`match ${matchId} abandoned: holding for rejoin grace`);
+  }
+}
+
+// What the drop-in rule and the landing's presence line read of the live
+// matches (server/drop_in.ts).
+function dropInCandidates(): DropInCandidate[] {
+  const out: DropInCandidate[] = [];
+  for (const [matchId, entry] of matches) {
+    let humans = 0;
+    for (const p of entry.match.players.values()) if (clients.has(p.clientId)) humans += 1;
+    out.push({
+      matchId,
+      time: entry.match.sim.time,
+      humans,
+      openSeats: entry.match.openBotSeats,
+      joinable: entry.publicQueue && entry.endedAt === null && entry.abandonedAt === null,
+    });
+  }
+  return out;
+}
+
+// A newcomer takes a bot's seat in the liveliest joinable match (ADR
+// 0025). False when there is none, and the caller queues them instead.
+function dropInto(client: Client): boolean {
+  const matchId = chooseDropIn(dropInCandidates());
+  if (matchId === null) return false;
+  const entry = matches.get(matchId);
+  if (!entry) return false;
+  for (const mm of matchmakers) mm.removeEverywhere(client.id);
+  const seat = entry.match.takeBotSeat(client.id, client.name);
+  if (!seat) return false;
+  client.matchId = matchId;
+  entry.dropIns.add(client.accountId);
+  // A Guest seated by hand makes the match unrated for everyone (ADR
+  // 0024), whenever it sits down.
+  if (client.guest) entry.ratedEligible = false;
+  // A ranked bot handing its seat over plays no more of this match: no
+  // rating and no Record for a game a person finished for it.
+  if (seat.pool) entry.botSeats.delete(seat.unitId);
+  send(client.id, {
+    t: 'match_start',
+    selfUnitId: seat.unitId,
+    team: seat.team,
+    dropIn: true,
+    ...forgedPayload(entry.match),
+  });
+  for (const cid of entry.match.players.keys()) {
+    if (cid !== client.id) send(cid, { t: 'player_joined', name: client.name, team: seat.team });
+  }
+  console.log(`match ${matchId}: ${client.name} dropped in on team ${seat.team}`);
+  return true;
+}
+
+// --- HTTP: auth, the meta API, the static client ---
+
+// Secure cookies need a secure context. Production is always HTTPS behind
+// Caddy; dev is http://localhost, which browsers already treat as secure,
+// so the flag is safe to set there too. A plain-http deployment on a bare
+// IP is the only case that has to go without.
+function cookieSecure(req: http.IncomingMessage): boolean {
+  if ((req.headers['x-forwarded-proto'] ?? '').toString().split(',')[0]?.trim() === 'https') {
+    return true;
+  }
+  const host = (req.headers.host ?? '').split(':')[0];
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
+// The account behind a request, or undefined. Every use rolls the session
+// forward in memory (server/sessions.ts explains why that is not a write).
+function accountForRequest(req: http.IncomingMessage, now: number): Account | undefined {
+  const id = parseCookies(req.headers.cookie).get(COOKIE_NAME);
+  if (!id) return undefined;
+  const session = sessions.resolve(id, now);
+  if (!session) return undefined;
+  const account = registry.findById(session.accountId);
+  if (!account) return undefined;
+  sessions.touch(id, now);
+  registry.touch(account.id, now);
+  return account;
+}
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
+// Bodies here are tiny (a name and a password); anything larger is not a
+// login and is dropped rather than buffered.
+const MAX_BODY_BYTES = 2048;
+
+async function readJsonBody(
+  req: http.IncomingMessage,
+  // Auth bodies are tiny; a forged draft is the one legitimate big body
+  // and its route says so explicitly.
+  maxBytes = MAX_BODY_BYTES,
+): Promise<Record<string, unknown> | null> {
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > maxBytes) return null;
+    chunks.push(chunk as Buffer);
+  }
+  try {
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// Adds one Set-Cookie without dropping any already on the response. A
+// registration that came back from Discord sets two (the new session, and
+// the spent ticket being cleared), and setHeader would have kept only the
+// last one written.
+function addCookie(res: http.ServerResponse, cookie: string): void {
+  const existing = res.getHeader('set-cookie');
+  const already = Array.isArray(existing) ? existing : existing ? [String(existing)] : [];
+  res.setHeader('set-cookie', [...already, cookie]);
+}
+
+function openSession(res: http.ServerResponse, req: http.IncomingMessage, account: Account): void {
+  const session = sessions.create(account.id, Date.now());
+  addCookie(
+    res,
+    serializeCookie(COOKIE_NAME, session.id, {
+      maxAgeS: Math.floor(SESSION_TTL_MS / 1000),
+      secure: cookieSecure(req),
+    }),
+  );
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = (req.url ?? '/').split('?')[0]!;
+
+    // The blanket meta-API rate limit, in front of everything /api
+    // including the sign-in routes: a script pays here before any route
+    // does work. Static files and the socket upgrade are not metered.
+    if (url.startsWith('/api/')) {
+      const address = clientAddress(req.headers, req.socket.remoteAddress, EDGE);
+      if (!apiLimiter.allow(address, Date.now())) {
+        res.setHeader('retry-after', '60');
+        sendJson(res, 429, { error: 'Too many requests; slow down.' });
+        return;
+      }
+    }
+
+    // --- auth: the only routes reachable without a session ---
+    if (url === '/api/register' || url === '/api/login') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      const password = typeof body?.password === 'string' ? body.password : '';
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      const now = Date.now();
+      // Both keys, so neither a word list at one name nor one machine
+      // sweeping many names gets a free run (server/login_throttle.ts).
+      const keys = [
+        accountKey(foldName(name)),
+        addressKey(clientAddress(req.headers, req.socket.remoteAddress, EDGE)),
+      ];
+      const wait = logins.retryAfterAny(keys, now);
+      if (wait > 0) {
+        res.setHeader('retry-after', String(Math.ceil(wait / 1000)));
+        sendJson(res, 429, {
+          error: `Too many attempts. Try again in ${Math.ceil(wait / 1000)}s.`,
+        });
+        return;
+      }
+      if (url === '/api/register') {
+        const created = registry.register(name, password, email, now);
+        if (!created.ok) {
+          // A taken name is not a failed credential guess, but it is still
+          // an attempt: rate it, or the signup form becomes the oracle the
+          // login form refuses to be.
+          for (const key of keys) logins.recordFailure(key, now);
+          // "Taken" for an address says an account exists on it, which is
+          // the same disclosure the login form refuses to make. It is
+          // unavoidable: uniqueness cannot be enforced without saying so.
+          // The throttle above is what keeps it from being enumerable.
+          sendJson(res, 409, { error: REGISTER_ERRORS[created.error] });
+          return;
+        }
+        for (const key of keys) logins.recordSuccess(key);
+        openSession(res, req, created.value);
+        sendJson(res, 200, selfAccount(created.value));
+        // Not awaited: the account is usable now, the link can arrive when
+        // it arrives, and a broken relay must not break registration.
+        void sendConfirmation(created.value);
+        return;
+      }
+      const account = registry.authenticate(name, password);
+      if (!account) {
+        for (const key of keys) logins.recordFailure(key, now);
+        // One message for an unknown name and for a wrong password: the
+        // answer must not tell an attacker which names exist.
+        sendJson(res, 401, { error: 'Wrong name or password.' });
+        return;
+      }
+      for (const key of keys) logins.recordSuccess(key);
+      registry.touch(account.id, now);
+      openSession(res, req, account);
+      sendJson(res, 200, selfAccount(account));
+      return;
+    }
+
+    // What may be picked, and what the rest costs (ADR 0018). In front of
+    // the wall because the offline practice match has to draw the same
+    // wall as the rest of the game and runs without an account: a visitor
+    // gets exactly what a fresh account gets, the starter collection and
+    // the week's rotation, so the practice match stops being the one place
+    // the whole roster is open. Signed in, it answers for the account.
+    // Nothing here is anybody's: champion ids, a table of prices, and a
+    // balance that is the caller's own or zero.
+    // A Guest for the public queue (ADR 0024): the name and a cookie of
+    // its own, reused while it lives so a reload keeps the same Guest.
+    if (url === '/api/guest') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const now = Date.now();
+      const held = parseCookies(req.headers.cookie).get(GUEST_COOKIE);
+      const known = held ? guests.resolve(held, now) : undefined;
+      if (known) {
+        sendJson(res, 200, { name: known.name });
+        return;
+      }
+      const { token, guest } = guests.issue(now);
+      addCookie(
+        res,
+        serializeCookie(GUEST_COOKIE, token, {
+          maxAgeS: Math.floor(GUEST_TTL_MS / 1000),
+          secure: cookieSecure(req),
+        }),
+      );
+      sendJson(res, 200, { name: guest.name });
+      return;
+    }
+
+    // Who is playing right now, for the landing's line over its button
+    // (ADR 0025): counts only, no names.
+    if (url === '/api/public/presence') {
+      sendJson(res, 200, presenceOf(dropInCandidates(), matchmaker.queuedCount));
+      return;
+    }
+
+    if (url === '/api/collection') {
+      const now = Date.now();
+      const me = accountForRequest(req, now);
+      sendJson(res, 200, {
+        laurels: me ? registry.laurels(me.id) : 0,
+        collection: me ? registry.collection(me.id) : [...STARTER_COLLECTION],
+        rotation: rotationAt(now),
+        prices: CHAMPION_PRICES,
+      });
+      return;
+    }
+
+    // A practice match's end, from the browser that ran it
+    // (src/net/practice_report.ts, PRIVACY.md): the scoreboard of a match
+    // against house bots, nothing that names anyone. No session, since
+    // most practice matches are a visitor's. The parse is strict and a
+    // report that is not one is dropped; the client never waits on the
+    // answer either way.
+    if (url === '/api/practice/report') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const report = parsePracticeReport(await readJsonBody(req, 8192));
+      if (report) practiceReports.append(report, Date.now());
+      sendJson(res, report ? 200 : 400, { ok: report !== null });
+      return;
+    }
+
+    // What a player wrote in the feedback box (src/ui/feedback_box.ts,
+    // PRIVACY.md): their words and the shape of the match they wrote them
+    // in, nothing that names anybody. No session, because the players
+    // worth hearing from are the ones who never made an account. The
+    // parse is strict and the body capped; the client never waits on the
+    // answer.
+    if (url === '/api/feedback') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const written = parseFeedback(await readJsonBody(req, 8192));
+      if (written) {
+        feedback.append(written, Date.now());
+        console.log(`feedback: ${written.text.length} characters from the ${written.where}`);
+      }
+      sendJson(res, written ? 200 : 400, { ok: written !== null });
+      return;
+    }
+
+    // The landing page's counters, and the one hole in the wall. It is
+    // deliberately three integers: no name, no id, nothing that could be
+    // walked to learn who plays here. /healthz already published the same
+    // two live numbers to anyone who asked, so this adds no exposure, only
+    // an endpoint that says out loud that it is public.
+    if (url === '/api/public/stats') {
+      sendJson(res, 200, {
+        online: clients.size,
+        matches: [...matches.values()].filter((e) => e.endedAt === null).length,
+        accounts: registry.count,
+      });
+      return;
+    }
+
+    // The landing's ladder (server/landing_page.ts): the top of the ladder
+    // by hand and the top bots, names and numbers any account already
+    // reads on the ladder page, so a visitor sees whose names stand there
+    // before being asked for their own. No ids, no reader.
+    if (url === '/api/public/landing') {
+      sendJson(
+        res,
+        200,
+        buildLandingPage({ seeds: ladderSeeds, stats: wayStatsFor, accounts: registry.count }),
+      );
+      return;
+    }
+
+    // The build this server runs, as a replay reads it: a page opened
+    // before a deploy compares itself to it before blaming a record
+    // (server/build_info.ts). Two numbers about the software, nothing
+    // about anyone.
+    if (url === '/api/public/build') {
+      sendJson(res, 200, buildInfo(starOrchard(), BUILD_ID));
+      return;
+    }
+
+    // Followed from a mail client, so it must be a plain GET and must end
+    // somewhere a person can read. Success and failure both land on the
+    // site; the query says which, and the page explains it.
+    if (url === '/api/email/confirm') {
+      const token = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('token') ?? '';
+      const now = Date.now();
+      const redeemed = tokens.redeem(token, 'confirm', now);
+      // The token carries the address it was issued for: an old link must
+      // not confirm an address the account moved to since.
+      const ok = redeemed ? registry.confirmEmail(redeemed.accountId, redeemed.email, now) : false;
+      res.writeHead(302, { location: `${ORIGIN}/?confirmed=${ok ? '1' : '0'}` });
+      res.end();
+      return;
+    }
+
+    // --- entering through Discord (ADR 0009) ---
+    // One departure for signing up and signing back in alike: the
+    // callback decides which this was by whether the Discord account that
+    // comes back already has an account here. Reachable without a session
+    // on purpose, since the whole point is that there is nothing to sign
+    // in with yet.
+    if (url === '/api/discord/start') {
+      if (!DISCORD) {
+        res.writeHead(302, { location: `${ORIGIN}/?discord=off`, 'cache-control': 'no-store' });
+        res.end();
+        return;
+      }
+      const state = discordFlows.start(Date.now());
+      res.writeHead(302, {
+        location: authorizeUrl(DISCORD, state),
+        'cache-control': 'no-store',
+      });
+      res.end();
+      return;
+    }
+
+    // Where Discord sends the browser back. Like the confirmation link it
+    // is a plain GET that has to end somewhere a person can read, so every
+    // outcome lands on the site and the query says which one.
+    if (url === CALLBACK_PATH) {
+      const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+      const now = Date.now();
+      const land = (outcome: string): void => {
+        res.writeHead(302, {
+          location: `${ORIGIN}/?discord=${outcome}`,
+          'cache-control': 'no-store',
+        });
+        res.end();
+      };
+      // The state is the whole defence: unknown, expired and forged are
+      // one case, and it is spent whether or not the rest works out.
+      const flow = discordFlows.take(q.get('state') ?? '', now);
+      const code = q.get('code') ?? '';
+      // No code means the player said no on the consent screen, which is
+      // an answer and not a failure, but there is nothing to do with it
+      // either way.
+      if (!discord || !flow || code.length === 0 || code.length > 512) {
+        land('failed');
+        return;
+      }
+      const arrival = await discord.exchange(code);
+      if (!arrival) {
+        land('failed');
+        return;
+      }
+      const { identity, joinedGuild } = arrival;
+      // This Discord already has its account here, so this is a sign-in.
+      // Relinking refreshes the name Discord showed, and the session that
+      // opens is the same one a password would have opened.
+      const held = registry.findByDiscordId(identity.id);
+      if (held) {
+        registry.linkDiscord(held.id, identity, now);
+        registry.touch(held.id, now);
+        openSession(res, req, held);
+        land('signedin');
+        return;
+      }
+      // Nobody yet: this is the signup, and nothing was typed. The name
+      // is derived from the Discord name; the account has no password and
+      // no email until its owner adds them.
+      const created = registry.registerWithDiscord(identity, now);
+      if (!created.ok) {
+        // Only a race can land here: the same Discord finished two round
+        // trips at once and the other one won.
+        land('failed');
+        return;
+      }
+      openSession(res, req, created.value);
+      // 'joined' says the account was made AND the player is now in the
+      // server, so the home offers the door rather than the invitation.
+      land(joinedGuild ? 'joined' : 'created');
+      return;
+    }
+
+    // Whether this server can offer the Discord door at all, for the
+    // entry screen to decide to show the button. Says nothing about
+    // anybody, which is why it needs no session.
+    if (url === '/api/discord/status') {
+      sendJson(res, 200, { configured: DISCORD !== null });
+      return;
+    }
+
+    // Asking for a reset link. Always answers the same way, whatever it
+    // finds: telling a caller that an address is on the server would make
+    // this the account directory the wall exists to prevent.
+    if (url === '/api/password/forgot') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      const now = Date.now();
+      const key = addressKey(clientAddress(req.headers, req.socket.remoteAddress, EDGE));
+      const wait = resets.retryAfterMs(key, now);
+      if (wait > 0) {
+        res.setHeader('retry-after', String(Math.ceil(wait / 1000)));
+        sendJson(res, 429, {
+          error: `Too many requests. Try again in ${Math.ceil(wait / 1000)}s.`,
+        });
+        return;
+      }
+      resets.recordFailure(key, now);
+      // Confirmed addresses only. A mistyped address at signup belongs to
+      // a stranger who never asked for it, and resetting into their inbox
+      // would hand them somebody else's account.
+      const account = registry.findByConfirmedEmail(email);
+      if (account?.email) {
+        const token = tokens.issue('reset', account.id, account.email.address, now);
+        void mailer
+          .send(
+            resetMail(
+              account.email.address,
+              account.name,
+              resetUrl(ORIGIN, token.token),
+              RESET_TTL_MS,
+            ),
+          )
+          .then((sent) => {
+            if (!sent) console.error(`reset mail not delivered for account ${account.id}`);
+          });
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // Spending a reset link.
+    if (url === '/api/password/reset') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const token = typeof body?.token === 'string' ? body.token : '';
+      const password = typeof body?.password === 'string' ? body.password : '';
+      // Checked BEFORE the token is spent: a password that is too short is
+      // the owner's typo, and it must not cost them the link as well.
+      const passErr = validatePassword(password);
+      if (passErr) {
+        sendJson(res, 400, { error: passwordErrorMessage(passErr) });
+        return;
+      }
+      const redeemed = tokens.redeem(token, 'reset', Date.now());
+      if (!redeemed || !registry.setPassword(redeemed.accountId, password)) {
+        sendJson(res, 400, { error: 'That link has expired or has already been used.' });
+        return;
+      }
+      // A reset is what someone reaches for when they believe another
+      // person has their password: every open session and every other
+      // outstanding link goes with it.
+      sessions.revokeAllFor(redeemed.accountId);
+      tokens.revokeAllFor(redeemed.accountId);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (url === '/api/logout') {
+      // POST only, like every other route that changes something. A GET
+      // here is reachable by a cross-site top-level navigation, which
+      // SameSite=Lax deliberately still carries the cookie on: a link in
+      // someone else's page could sign a player out mid-queue. Nuisance
+      // rather than compromise, but the rest of the API already refuses
+      // it and this route was the one exception.
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'use POST' });
+        return;
+      }
+      const id = parseCookies(req.headers.cookie).get(COOKIE_NAME);
+      const everywhere =
+        new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('all') === '1';
+      if (id) {
+        const session = sessions.resolve(id, Date.now());
+        // Logging out everywhere is what a player reaches for after
+        // playing on someone else's machine; it is why sessions are
+        // stored at all (ADR 0006).
+        if (everywhere && session) sessions.revokeAllFor(session.accountId);
+        else sessions.revoke(id);
+      }
+      res.setHeader('set-cookie', clearCookie(COOKIE_NAME, { secure: cookieSecure(req) }));
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // --- everything else under /api needs an account ---
+    if (url.startsWith('/api/')) {
+      const me = accountForRequest(req, Date.now());
+      if (!me) {
+        sendJson(res, 401, { error: 'This needs an account.' });
+        return;
+      }
+      if (url === '/api/me') {
+        sendJson(res, 200, describeSelf(me));
+        return;
+      }
+      // --- the shop (ADR 0018); the collection itself is public, above ---
+      if (url === '/api/collection/recruit' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const championId = typeof body?.championId === 'string' ? body.championId : '';
+        const out = registry.recruit(me.id, championId);
+        if (!out.ok) {
+          sendJson(res, 400, { error: RECRUIT_REFUSALS[out.error] });
+          return;
+        }
+        sendJson(res, 200, {
+          laurels: out.value,
+          collection: registry.collection(me.id),
+        });
+        return;
+      }
+      // --- bots on the account (ADR 0013): the Academy's store ---
+      if (url === '/api/bots') {
+        sendJson(res, 200, listBots(botDeps, me.id));
+        return;
+      }
+      if (url === '/api/bots/create' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, createBot(botDeps, me.id, body));
+        return;
+      }
+      if (url === '/api/bots/save' && req.method === 'POST') {
+        const body = await readJsonBody(req, PLAYBOOK_JSON_MAX + 4096);
+        sendJson(res, 200, saveBot(botDeps, me.id, body));
+        return;
+      }
+      if (url === '/api/bots/delete' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, deleteBot(botDeps, me.id, body?.id));
+        return;
+      }
+      if (url === '/api/bots/deposit' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, setDeposited(botDeps, me.id, body?.id, body?.on));
+        return;
+      }
+      if (url === '/api/bots/versions' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, listVersions(botDeps, me.id, body?.id));
+        return;
+      }
+      if (url === '/api/bots/version' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, getVersion(botDeps, me.id, body?.id, body?.version));
+        return;
+      }
+      // The Record (server/bot_records.ts): the Academy's sparring lands
+      // here with its replay; the list and one entry come back from here.
+      if (url === '/api/bots/record/add' && req.method === 'POST') {
+        const body = await readJsonBody(req, RECORD_UPLOAD_MAX);
+        const found = ownedBot(botDeps, me.id, body?.id);
+        if (!found.ok) {
+          sendJson(res, 200, found);
+          return;
+        }
+        const parsed = parseUpload(body, Date.now());
+        if (!parsed.ok) {
+          sendJson(res, 200, { ok: false, error: `not a sparring result: ${parsed.error}` });
+          return;
+        }
+        // The replay first, on a match id of its own, so the entry can
+        // point at it; a save that fails leaves an entry without one.
+        let replayId: number | null = null;
+        try {
+          const id = nextMatchId++;
+          saveJsonAtomic(path.join(REPLAYS_DIR, `${id}.json`), parsed.value.record);
+          replayId = id;
+        } catch (err) {
+          console.error('sparring replay save failed', err);
+        }
+        const { id } = addEntry(botStore, found.bot.id, me.id, { ...parsed.value.entry, replayId });
+        pruneNumberedJson(REPLAYS_DIR, REPLAY_KEEP, botStore.heldReplayIds());
+        const entry = getEntry(botStore, found.bot.id, id);
+        sendJson(res, 200, {
+          ok: true,
+          row: entry ? rowOf(entry) : null,
+          tally: talliesOf(listEntries(botStore, found.bot.id)),
+        });
+        return;
+      }
+      if (url === '/api/bots/record/list' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const found = ownedBot(botDeps, me.id, body?.id);
+        sendJson(
+          res,
+          200,
+          found.ok
+            ? {
+                ok: true,
+                rows: listEntries(botStore, found.bot.id),
+                tally: talliesOf(listEntries(botStore, found.bot.id)),
+              }
+            : found,
+        );
+        return;
+      }
+      if (url === '/api/bots/record/entry' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const found = ownedBot(botDeps, me.id, body?.id);
+        if (!found.ok) {
+          sendJson(res, 200, found);
+          return;
+        }
+        const entryId = typeof body?.entryId === 'number' ? body.entryId : -1;
+        const entry = getEntry(botStore, found.bot.id, entryId);
+        sendJson(res, 200, entry ? { ok: true, entry } : { ok: false, error: 'no such entry' });
+        return;
+      }
+      if (url === '/api/bots/briefing' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const found = ownedBot(botDeps, me.id, body?.id);
+        sendJson(
+          res,
+          200,
+          found.ok ? { ok: true, ...buildBriefing(nightCoachDeps, found.bot) } : found,
+        );
+        return;
+      }
+      if (url === '/api/bots/proposal' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const found = ownedBot(botDeps, me.id, body?.id);
+        sendJson(
+          res,
+          200,
+          found.ok
+            ? answerProposal(nightCoachDeps, found.bot, body?.proposalId, body?.action)
+            : found,
+        );
+        return;
+      }
+      if (url === '/api/bots/autoapply' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, setAutoApply(botDeps, me.id, body?.id, body?.on));
+        return;
+      }
+      // The Arena as it stands for this account: on-demand matches left
+      // today, the ranked pool's size, and the next round's time.
+      if (url === '/api/bots/arena') {
+        const now = Date.now();
+        const cap = arenaDeps.playNowPerDay ?? ARENA_PLAY_NOW_PER_DAY;
+        const used = botStore.arenaEventsSince(me.id, now - DAY_MS);
+        const last = botStore.arenaLastRoundAt();
+        const roundMs = arenaDeps.roundMs ?? ARENA_ROUND_MS;
+        sendJson(res, 200, {
+          ok: true,
+          left: cap <= 0 ? null : Math.max(0, cap - used),
+          cap,
+          pool: botStore.listDeposited().length,
+          nextRoundInMs: last === null ? 0 : Math.max(0, last + roundMs - now),
+        });
+        return;
+      }
+      if (url === '/api/bots/open' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, setOpenPlaybook(botDeps, me.id, body?.id, body?.on));
+        return;
+      }
+      // A bot's page (server/bot_page.ts): what anyone signed in may read
+      // of a bot, its playbook only when the owner opened it.
+      if (url === '/api/bots/page' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, describeBotPage(botPageDeps, me.id, body?.id));
+        return;
+      }
+      // The pool (CONTEXT.md: Ranked): every ranked bot on the server, for
+      // the ladder's Arena tab, a page each; the ladder itself needs three
+      // rated games, the pool none.
+      if (url === '/api/bots/pool') {
+        sendJson(res, 200, {
+          ok: true,
+          bots: botStore.listDeposited().map((b) => ({
+            id: b.id,
+            name: b.name,
+            championId: b.championId,
+            owner: registry.findById(b.accountId)?.name ?? null,
+            mine: b.accountId === me.id,
+            tally: botStore.ratedTally(b.id),
+            arena: botStore.botRating(b.id, 'arena').rating,
+          })),
+        });
+        return;
+      }
+      if (url === '/api/bots/challenge' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, await challenge(arenaDeps, me.id, body?.id, body?.target));
+        return;
+      }
+      if (url === '/api/bots/playnow' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, await playNow(arenaDeps, me.id, body?.id));
+        return;
+      }
+      if (url === '/api/bots/revert' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, revertBot(botDeps, me.id, body?.id, body?.version));
+        return;
+      }
+      // The coach: streamed as NDJSON like the kit conversation, the
+      // comment as the model writes it and each operation as it applies.
+      // The conversation kept with the bot (server/bot_chats.ts): read on
+      // opening the bot in the Academy, cleared on Start over.
+      if (url === '/api/bots/chat' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, botChat(botDeps, me.id, body?.id));
+        return;
+      }
+      if (url === '/api/bots/chat/clear' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        sendJson(res, 200, clearBotChat(botDeps, me.id, body?.id));
+        return;
+      }
+      if (url === '/api/bots/suggest' && req.method === 'POST') {
+        const body = await readJsonBody(req, PLAYBOOK_JSON_MAX + 160_000);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        // A new message rides the thread kept with the bot; a whole thread
+        // in the body (the older client) still answers, unkept.
+        const text = typeof body?.text === 'string' ? body.text : null;
+        if (!id || (text === null && !Array.isArray(body?.messages))) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        const stored = text !== null ? botStore.getChat(id) : [];
+        const quota = checkQuota(quotaDeps, 'agent');
+        if (!quota.ok) {
+          sendJson(res, 200, quota);
+          return;
+        }
+        res.writeHead(200, {
+          'content-type': 'application/x-ndjson',
+          'cache-control': 'no-store',
+          'x-accel-buffering': 'no',
+        });
+        const outcome = await coachPlaybook(coachDeps, me.id, {
+          id,
+          messages:
+            text !== null
+              ? windowTurns(stored, text)
+              : (body?.messages as { role: 'user' | 'assistant'; text: string }[]),
+          ...(body?.playbook !== undefined ? { playbook: body.playbook } : {}),
+          depth: body?.depth === 'deep' ? 'deep' : 'quick',
+          onProgress: (p) => {
+            res.write(`${JSON.stringify({ progress: p.kind, ...p })}\n`);
+          },
+        });
+        if (outcome.ok) {
+          spendQuota(quotaDeps, me.id, 'agent');
+          if (text !== null) {
+            botStore.setChat(
+              id,
+              appendExchange(
+                stored,
+                text,
+                outcome.raw,
+                outcome.refused.map((r) => r.error),
+              ),
+              Date.now(),
+            );
+          }
+        }
+        res.end(`${JSON.stringify(outcome)}\n`);
+        return;
+      }
+      // --- the Forge (ADR 0010, ADR 0011): drafts, ledger, finalize ---
+      if (url === '/api/forge/drafts') {
+        const out = listDrafts(forgeDeps, me.id);
+        // Each row carries its current splash, and once its model is
+        // built (sealed or not: the build lands assets on a draft too)
+        // its model and sheet (relative asset paths), so the draft rail,
+        // the Forge-queue select, and the workshop can reach the files.
+        sendJson(
+          res,
+          200,
+          out.ok
+            ? {
+                ...out,
+                drafts: out.drafts.map((d) => {
+                  const assets = forgeStore.forgedAssets(d.id) as Record<string, unknown> | null;
+                  const pointers = modelPointers(assets);
+                  const a = assets as {
+                    sheet?: string;
+                    family?: string;
+                    weapon?: string;
+                    rigged?: string;
+                  } | null;
+                  return {
+                    ...d,
+                    // A sealed champion from before a rule tightening may no
+                    // longer validate: the rail says so, the owner reforges.
+                    valid: validateForged(d.def).ok,
+                    splash: splashOf(forgeStore, d),
+                    model: pointers.model,
+                    // Whether the model carries a skeleton: every build
+                    // leaves one, a model built before the build rigged
+                    // does not, and its first bake will pay for the rig.
+                    rigged: typeof a?.rigged === 'string',
+                    sheet: a?.sheet ?? null,
+                    family: a?.family ?? null,
+                    weapon: a?.weapon ?? null,
+                    clips: pointers.clips,
+                    clipFiles: pointers.clipFiles,
+                    display: assets ? displayOf(forgeStore, d.id) : null,
+                    // The chosen spell icons, for the HUD of a test drive.
+                    icons: iconsOf(forgeStore, d.id),
+                    // The editor's conversations, so a reload finds them.
+                    chats: chatsOf(forgeStore, d.id),
+                  };
+                }),
+              }
+            : out,
+        );
+        return;
+      }
+      if (url === '/api/forge/draft' && req.method === 'POST') {
+        const body = await readJsonBody(req, DRAFT_JSON_MAX + 1024);
+        if (!body || typeof body.def !== 'object' || body.def === null) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        sendJson(res, 200, saveDraft(forgeDeps, me.id, me.name, body.def as ForgedChampionDef));
+        return;
+      }
+      // A conversation saved with its draft: the whole thread and the
+      // latest proposal, owner-only. Wide cap: assistant turns hold raw
+      // model answers.
+      if (url === '/api/forge/chat' && req.method === 'POST') {
+        const body = await readJsonBody(req, CHAT_JSON_MAX);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        sendJson(
+          res,
+          200,
+          saveChat({ store: forgeStore }, me.id, {
+            id,
+            kind: body?.kind,
+            turns: body?.turns,
+            proposal: body?.proposal,
+          }),
+        );
+        return;
+      }
+      if (url === '/api/forge/draft/delete' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        const outcome = id
+          ? deleteDraft(forgeDeps, me.id, id)
+          : { ok: false as const, error: 'malformed request' };
+        // A deleted draft takes its art candidates and their files along.
+        if (outcome.ok && id) deleteArtFor(artDeps, id);
+        sendJson(res, 200, outcome);
+        return;
+      }
+      if (url === '/api/forge/build' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        // The daily generation quota (phase 8) is checked first and spent
+        // only when the chain actually starts: a refused build (invalid
+        // kit, no credits) never burns a day's allowance.
+        const quota = checkQuota(quotaDeps, 'generation');
+        if (!quota.ok) {
+          sendJson(res, 200, quota);
+          return;
+        }
+        // `force` skips the reference check alone (the creator looked at
+        // their own picture and disagrees); every other gate stands.
+        const outcome = buildModel(forgeDeps, me.id, id, body?.force === true);
+        if (outcome.ok) spendQuota(quotaDeps, me.id, 'generation');
+        // `done` is the async job's settling; the wire answer is the id.
+        sendJson(res, 200, outcome.ok ? { ok: true, jobId: outcome.jobId } : outcome);
+        return;
+      }
+      if (url === '/api/forge/animate' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        // Its own daily meter, not the build's: a bake retargets a rig
+        // the Creation already paid for, and a kit with per-spell clips
+        // needs more bakes than a day's builds. Spent only when it starts.
+        const quota = checkQuota(quotaDeps, 'animate');
+        if (!quota.ok) {
+          sendJson(res, 200, quota);
+          return;
+        }
+        // The style prefill plus the player's per-role picks (validated
+        // against the provider catalog in animateChampion).
+        const family = typeof body?.family === 'string' ? body.family : undefined;
+        const outcome = animateChampion(forgeDeps, me.id, id, family, body?.clips);
+        if (outcome.ok) spendQuota(quotaDeps, me.id, 'animate');
+        sendJson(res, 200, outcome.ok ? { ok: true, jobId: outcome.jobId } : outcome);
+        return;
+      }
+      if (url === '/api/forge/animations') {
+        // The pickable animation catalog, per clip role, plus each
+        // style's suggested set: what the editor's five selects render.
+        const provider = forgeDeps.generation?.provider;
+        sendJson(
+          res,
+          200,
+          provider
+            ? {
+                ok: true,
+                // The provider's presets plus the house library, the
+                // same merged catalog the bake validates against.
+                roles: catalogRoles(provider),
+                defaults: Object.fromEntries(
+                  WEAPON_FAMILIES.map((f) => [f, provider.clipDefaults(f)]),
+                ),
+              }
+            : { ok: false, error: 'generation is not configured on this server yet' },
+        );
+        return;
+      }
+      if (url === '/api/forge/weapon' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        // Rides the same daily generation meter as the build (it is a 3D
+        // build), spent only when the chain actually starts.
+        const quota = checkQuota(quotaDeps, 'generation');
+        if (!quota.ok) {
+          sendJson(res, 200, quota);
+          return;
+        }
+        const outcome = forgeWeapon(forgeDeps, me.id, id);
+        if (outcome.ok) spendQuota(quotaDeps, me.id, 'generation');
+        sendJson(res, 200, outcome.ok ? { ok: true, jobId: outcome.jobId } : outcome);
+        return;
+      }
+      if (url === '/api/forge/job') {
+        const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+        const jobId = Number(q.get('id'));
+        sendJson(
+          res,
+          200,
+          Number.isInteger(jobId)
+            ? finalizeStatus(forgeDeps, me.id, jobId)
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // --- 2D art candidates (plan-forge phase 4): splash and icons ---
+      if (url === '/api/forge/art') {
+        const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+        const id = q.get('id');
+        sendJson(
+          res,
+          200,
+          id ? listArt(artDeps, me.id, id) : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      if (url === '/api/forge/art/generate' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        const kind = typeof body?.kind === 'string' ? body.kind : '';
+        const line = typeof body?.line === 'string' ? body.line : '';
+        // fromCid iterates on an existing candidate (its image rides the
+        // generation); absent means a fresh start.
+        const fromCid = Number.isInteger(body?.fromCid) ? (body?.fromCid as number) : undefined;
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        // Awaited on purpose: one 2D image is seconds, not the minutes of
+        // a finalize chain, so the candidate answers on the same request.
+        sendJson(
+          res,
+          200,
+          await generateArt(artDeps, me.id, {
+            id,
+            kind,
+            line,
+            ...(fromCid !== undefined ? { fromCid } : {}),
+          }),
+        );
+        return;
+      }
+      if (url === '/api/forge/art/pick' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        const cid = Number(body?.cid);
+        sendJson(
+          res,
+          200,
+          id && Number.isInteger(cid)
+            ? chooseArt(artDeps, me.id, { id, cid })
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // The workshop's display tuning (height, facing, weapon grip):
+      // owner-only, finalized-only, clamped by the shared sanitizer.
+      if (url === '/api/forge/display' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        sendJson(
+          res,
+          200,
+          id
+            ? setForgedDisplay({ store: forgeStore }, me.id, id, body?.display)
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // The explicit seal and unseal (playtest: a lock must be its own
+      // click, never a side effect of animating). Owner-only, free.
+      if ((url === '/api/forge/seal' || url === '/api/forge/unseal') && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        const act = url === '/api/forge/seal' ? sealChampion : unsealChampion;
+        sendJson(
+          res,
+          200,
+          id ? act({ store: forgeStore }, me.id, id) : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // The kit conversation: owner-only, drafts only, metered on the
+      // agent quota, one unit per player message, spent only when a
+      // proposal lands. The body carries the whole thread plus the
+      // unsaved form state, hence the wide cap.
+      // The stat conversation (Tuning tab) rides the same wire and meter,
+      // the look conversation (the spell looks on the Spells tab) too,
+      // and so does the brief, the Design tab's first panel, whose
+      // answers are whole champions rather than one part of one.
+      if (
+        (url === '/api/forge/brief' ||
+          url === '/api/forge/suggest' ||
+          url === '/api/forge/suggest-stats' ||
+          url === '/api/forge/suggest-look') &&
+        req.method === 'POST'
+      ) {
+        const body = await readJsonBody(req, DRAFT_JSON_MAX + 160_000);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        if (!id || !Array.isArray(body?.messages)) {
+          sendJson(res, 400, { ok: false, error: 'malformed request' });
+          return;
+        }
+        const quota = checkQuota(quotaDeps, 'agent');
+        if (!quota.ok) {
+          sendJson(res, 200, quota);
+          return;
+        }
+        // Streamed as NDJSON: progress lines while the model writes (its
+        // words as they come, the stages between calls), the outcome as
+        // the last line, so the conversation reads like a chat instead
+        // of a silent wait.
+        res.writeHead(200, {
+          'content-type': 'application/x-ndjson',
+          'cache-control': 'no-store',
+          'x-accel-buffering': 'no',
+        });
+        const ask =
+          url === '/api/forge/brief'
+            ? briefChampion
+            : url === '/api/forge/suggest'
+              ? suggestKit
+              : url === '/api/forge/suggest-stats'
+                ? suggestStats
+                : suggestLook;
+        const outcome = await ask(suggestDeps, me.id, {
+          id,
+          messages: body.messages as { role: 'user' | 'assistant'; text: string }[],
+          ...(body.def !== undefined ? { def: body.def } : {}),
+          onProgress: (p) => {
+            res.write(`${JSON.stringify({ progress: p.kind, text: p.text })}\n`);
+          },
+        });
+        if (outcome.ok) spendQuota(quotaDeps, me.id, 'agent');
+        res.end(`${JSON.stringify(outcome)}\n`);
+        return;
+      }
+      // Reforge, first slice: a sealed champion's basic-attack reach.
+      // Owner-only; the patched def must clear the full validation gate
+      // (bounds and power budget) before it is stored.
+      if (url === '/api/forge/reach' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        sendJson(
+          res,
+          200,
+          id
+            ? setForgedAttackRange({ store: forgeStore }, me.id, id, body?.attackRange)
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // Generated files (splash art, model sheets, models) for logged-in
+      // clients. Paths are relative to ASSETS_DIR and produced by this
+      // server alone; the join is still guarded against traversal.
+      const assetUrl = /^\/api\/forge\/asset\/(.+)$/.exec(url);
+      if (assetUrl) {
+        const rel = decodeURIComponent(assetUrl[1] ?? '');
+        const filePath = path.join(ASSETS_DIR, rel);
+        if (!filePath.startsWith(ASSETS_DIR + path.sep) || rel.includes('..')) {
+          sendJson(res, 403, { error: 'no' });
+          return;
+        }
+        try {
+          const body = await readFile(filePath);
+          res.writeHead(200, {
+            'content-type': MIME[path.extname(filePath)] ?? 'application/octet-stream',
+            // Candidate files are content-stable (one file per generation);
+            // the finalize outputs only change on a future Reforge.
+            'cache-control': 'private, max-age=3600',
+          });
+          res.end(body);
+        } catch {
+          sendJson(res, 404, { error: 'no such asset' });
+        }
+        return;
+      }
+      // --- the gallery (plan-forge phase 7): browse, likes, reports ---
+      if (url === '/api/gallery') {
+        const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+        sendJson(
+          res,
+          200,
+          listGallery(galleryDeps, me.id, {
+            sort: q.get('sort') === 'popular' ? 'popular' : 'recent',
+            q: q.get('q') ?? '',
+            playable: q.get('playable') === '1',
+          }),
+        );
+        return;
+      }
+      if (url === '/api/gallery/like' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        sendJson(
+          res,
+          200,
+          id
+            ? toggleLike(galleryDeps, me.id, id, body?.on === true)
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      if (url === '/api/gallery/report' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        const reason = typeof body?.reason === 'string' ? body.reason : '';
+        sendJson(
+          res,
+          200,
+          id
+            ? reportForged(galleryDeps, me.id, id, reason)
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      if (url === '/api/gallery/visibility' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : null;
+        sendJson(
+          res,
+          200,
+          id
+            ? setVisibility(galleryDeps, me.id, id, {
+                ...(typeof body?.listed === 'boolean' ? { listed: body.listed } : {}),
+                ...(typeof body?.shared === 'boolean' ? { shared: body.shared } : {}),
+              })
+            : { ok: false, error: 'malformed request' },
+        );
+        return;
+      }
+      // Fixing a typo at signup, moving mailbox, or adding an address to
+      // an account old enough not to have one.
+      if (url === '/api/email') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'use POST' });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const email = typeof body?.email === 'string' ? body.email.trim() : '';
+        const result = registry.setEmail(me.id, email, Date.now());
+        if (!result.ok) {
+          sendJson(res, 409, {
+            error:
+              result.error === 'email_taken'
+                ? 'An account already uses that email address.'
+                : emailErrorMessage('shape'),
+          });
+          return;
+        }
+        sendJson(res, 200, selfAccount(result.value));
+        void sendConfirmation(result.value);
+        return;
+      }
+      // The link never arrived, or it sat too long. Rate limited on the
+      // same budget as a reset request, and for the same reason: it is a
+      // button that makes this server send mail.
+      if (url === '/api/email/resend') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'use POST' });
+          return;
+        }
+        const now = Date.now();
+        const key = addressKey(clientAddress(req.headers, req.socket.remoteAddress, EDGE));
+        const wait = resets.retryAfterMs(key, now);
+        if (wait > 0) {
+          res.setHeader('retry-after', String(Math.ceil(wait / 1000)));
+          sendJson(res, 429, {
+            error: `Too many requests. Try again in ${Math.ceil(wait / 1000)}s.`,
+          });
+          return;
+        }
+        resets.recordFailure(key, now);
+        sendJson(res, 200, { ok: true });
+        void sendConfirmation(me);
+        return;
+      }
+      // The ladder page (server/ladder_page.ts): one way, the placed accounts
+      // with their rated play, the reader's own place, the accounts placing.
+      if (url === '/api/ladder/page') {
+        const way = wayParam(req.url);
+        if (way === null) {
+          sendJson(res, 400, { error: 'unknown way' });
+          return;
+        }
+        const page = buildLadderPage(way, ladderSeeds(way), wayStatsFor(way), me.id, {
+          // No bot chips on a bot way any more: the row is the bot (ADR 0016).
+          ...(way === 'forge'
+            ? {
+                forged: (championId: string) => {
+                  const row = forgeStore.getForged(championId);
+                  return row ? { name: row.def.name, splash: splashOf(forgeStore, row) } : null;
+                },
+              }
+            : {}),
+        });
+        sendJson(res, 200, page);
+        return;
+      }
+      // The account's place on every way, for the home card.
+      if (url === '/api/ladder/mine') {
+        const out: Record<string, unknown> = {};
+        for (const way of WAYS) out[way] = placeOf(ladderSeeds(way), me.id);
+        sendJson(res, 200, out);
+        return;
+      }
+      // The home's panels (server/home_page.ts): the top of the ladder,
+      // the top bots, the latest forged champions, the reader's own numbers.
+      if (url === '/api/home') {
+        sendJson(
+          res,
+          200,
+          buildHomePage(
+            {
+              seeds: ladderSeeds,
+              stats: wayStatsFor,
+              forged: forgeStore.listFinalized(),
+              career: buildProfile(matchLog, me.id),
+              myBots: botStore.listByAccount(me.id),
+            },
+            me.id,
+            { splash: (row) => splashOf(forgeStore, row) },
+          ),
+        );
+        return;
+      }
+      if (url === '/api/ladder') {
+        // way=bot and way=arena are the bot ladders (ADR 0013); no way is
+        // the hand ladder, unchanged.
+        const way = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('way');
+        if (way === 'bot' || way === 'arena') {
+          sendJson(
+            res,
+            200,
+            buildBotLadder(
+              botStore.listBotRatings(way === 'bot' ? 'live' : 'arena'),
+              // The row is the bot; it needs a living bot and a living owner.
+              (botId, aid) =>
+                registry.findById(aid) ? (botStore.getBot(botId)?.name ?? null) : null,
+            ),
+          );
+          return;
+        }
+        sendJson(res, 200, buildLadder(registry.all()));
+        return;
+      }
+      if (url === '/api/live') {
+        // Running matches open to spectators: never abandoned, not ended.
+        const live = [...matches.entries()]
+          .filter(([, e]) => e.endedAt === null && e.abandonedAt === null)
+          .map(([id, e]) => ({
+            id,
+            durationS: Math.round(e.match.sim.time),
+            spectators: e.match.spectators.size,
+            players: [...e.match.players.values()].map((p) => ({ name: p.name, team: p.team })),
+          }));
+        sendJson(res, 200, live);
+        return;
+      }
+      const replayUrl = /^\/api\/replay\/(\d{1,9})$/.exec(url);
+      if (replayUrl) {
+        try {
+          const body = await readFile(path.join(REPLAYS_DIR, `${replayUrl[1]}.json`));
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+          res.end(body);
+        } catch {
+          sendJson(res, 404, { error: 'replay not found' });
+        }
+        return;
+      }
+      const accountUrl = /^\/api\/account\/(\d{1,9})$/.exec(url);
+      if (accountUrl) {
+        const a = registry.findById(Number(accountUrl[1]));
+        if (!a) {
+          sendJson(res, 404, { error: 'unknown account' });
+          return;
+        }
+        sendJson(res, 200, describeAccount(a));
+        return;
+      }
+      sendJson(res, 404, { error: 'unknown endpoint' });
+      return;
+    }
+    if (url === '/healthz') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          clients: clients.size,
+          matches: matches.size,
+          uptimeS: Math.round(process.uptime()),
+          // How the world loop kept up over its last window (server/tick_meter.ts).
+          tick: meter.last(),
+        }),
+      );
+      return;
+    }
+    let filePath = path.join(DIST, url === '/' ? 'index.html' : url);
+    if (filePath !== DIST && !filePath.startsWith(DIST + path.sep)) {
+      res.writeHead(403).end();
+      return;
+    }
+    try {
+      const s = await stat(filePath);
+      if (s.isDirectory()) filePath = path.join(filePath, 'index.html');
+    } catch {
+      filePath = path.join(DIST, 'index.html');
+    }
+    // The entry document goes out with the audience counter's tag on it
+    // when this deployment has a site to report to (server/stats_tag.ts),
+    // and with this browser's visit id (server/visit_cookie.ts), which is
+    // what tells a browser coming back from one arriving for the first
+    // time. Every other file goes out as built.
+    const isEntry = filePath === path.join(DIST, 'index.html');
+    let visitId: string | null = null;
+    if (isEntry && STATS_ON) {
+      const visit = nextVisit(
+        parseCookies(req.headers.cookie).get(VISIT_COOKIE),
+        visitChoice(`?${(req.url ?? '').split('?')[1] ?? ''}`),
+        () => randomBytes(16).toString('hex'),
+      );
+      visitId = visitIdOf(visit);
+      if (visit.kind === 'set') {
+        addCookie(
+          res,
+          serializeCookie(VISIT_COOKIE, visit.value, {
+            maxAgeS: VISIT_MAX_AGE_S,
+            secure: cookieSecure(req),
+          }),
+        );
+      }
+    }
+    const body = isEntry
+      ? withVisitTag(
+          withStatsTag(
+            withBuildTag(await readFile(filePath, 'utf8'), BUILD_ID),
+            STATS_ON ? STATS_WEBSITE_ID : '',
+          ),
+          visitId,
+        )
+      : await readFile(filePath);
+    // The client shipped no caching headers at all, which leaves a browser
+    // free to serve a stale index.html and with it the previous build's
+    // hashed bundle: you reload after a change and see yesterday's game.
+    // Vite fingerprints everything under /assets/, so those are immutable
+    // and the entry document must always be revalidated.
+    const immutable = url.startsWith('/assets/');
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(filePath)] ?? 'application/octet-stream',
+      'cache-control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+    });
+    res.end(body);
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain' });
+    res.end('not found');
+  }
+});
+
+// --- WebSocket ---
+
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  maxPayload: 16 * 1024,
+  // A seat is handed out on the upgrade, so both gates live here: a page
+  // we never served does not get one (a client with no Origin header, a
+  // headless bot, does), and neither does a visitor with no live session.
+  // Refusing here rather than after the socket opens means nothing below
+  // has to carry an "unauthenticated client" state.
+  verifyClient: ({ req }, done) => {
+    if (!originAllowed(req.headers, EDGE)) {
+      console.warn(`refused upgrade from origin ${String(req.headers.origin)}`);
+      done(false, 403, 'forbidden origin');
+      return;
+    }
+    const cookies = parseCookies(req.headers.cookie);
+    const cookieId = cookies.get(COOKIE_NAME);
+    const session = cookieId ? sessions.resolve(cookieId, Date.now()) : undefined;
+    const guestToken = cookies.get(GUEST_COOKIE);
+    const guest = guestToken ? guests.resolve(guestToken, Date.now()) : undefined;
+    if ((!session || !registry.findById(session.accountId)) && !guest) {
+      done(false, 401, 'this needs an account');
+      return;
+    }
+    done(true);
+  },
+});
+
+// Sockets per player address, so one machine cannot farm connections.
+const connections = new ConnectionLimiter();
+
+wss.on('connection', (ws, req) => {
+  const ip = clientAddress(req.headers, req.socket.remoteAddress, EDGE);
+  if (!connections.acquire(ip)) {
+    ws.close(1013, 'too many connections');
+    return;
+  }
+  // verifyClient already refused anything without a live session, so this
+  // can only fail if the session died in the microseconds since. Treat it
+  // as a refusal rather than trusting a half-identified socket.
+  const now = Date.now();
+  const cookies = parseCookies(req.headers.cookie);
+  const cookieId = cookies.get(COOKIE_NAME) ?? '';
+  const session = sessions.resolve(cookieId, now);
+  const account = session ? registry.findById(session.accountId) : undefined;
+  // The account wins when a browser holds both cookies: a Guest who made
+  // an account plays as the account from then on.
+  const guest = account ? undefined : guests.resolve(cookies.get(GUEST_COOKIE) ?? '', now);
+  const who = account
+    ? { accountId: account.id, name: account.name, sessionId: session?.id ?? '', guest: false }
+    : guest
+      ? { accountId: guest.id, name: guest.name, sessionId: '', guest: true }
+      : null;
+  if (!who) {
+    connections.release(ip);
+    ws.close(4401, 'this needs an account');
+    return;
+  }
+  if (account) {
+    sessions.touch(cookieId, now);
+    registry.touch(account.id, now);
+  }
+
+  // One game socket per account: a second connection takes the seat and
+  // the first is closed. Two sockets on one account could otherwise queue
+  // into both sides of the same match, which would make its Elo
+  // self-referential. The upside is the reason to prefer it to a refusal:
+  // when a laptop dies mid-match, the phone takes the seat back.
+  for (const other of clients.values()) {
+    if (other.accountId === who.accountId) {
+      other.ws.close(4409, 'this account connected somewhere else');
+    }
+  }
+
+  const id = nextClientId++;
+  const client: Client = {
+    id,
+    ws,
+    accountId: who.accountId,
+    name: who.name,
+    guest: who.guest,
+    sessionId: who.sessionId,
+    matchId: null,
+    msgWindowStart: now,
+    msgCount: 0,
+  };
+  clients.set(id, client);
+  send(id, { t: 'welcome', clientId: id, name: who.name });
+
+  ws.on('message', (data) => {
+    const raw = data.toString();
+    if (raw.length > MAX_MSG_BYTES) return;
+    const now = Date.now();
+    if (now - client.msgWindowStart > 1000) {
+      client.msgWindowStart = now;
+      client.msgCount = 0;
+    }
+    if (++client.msgCount > MAX_MSGS_PER_SEC) return;
+
+    const msg = parseClientMsg(raw);
+    if (!msg) return;
+
+    if (msg.t === 'hello') {
+      // Identity was settled on the upgrade, so hello carries none: it
+      // only asks whether a live match is still holding this account's
+      // seat. If it is, hand it back (the bot stand-in steps aside); the
+      // later queue/lobby message is then ignored by the in-match guard.
+      // Keyed on the account, so the seat comes back on whatever device
+      // the player reconnects from.
+      const seat = rejoins.claim(client.accountId);
+      if (seat) {
+        const entry = matches.get(seat.matchId);
+        if (entry) {
+          entry.match.restorePlayer(id, seat);
+          entry.abandonedAt = null;
+          client.matchId = seat.matchId;
+          send(id, {
+            t: 'match_start',
+            selfUnitId: seat.unitId,
+            team: seat.team,
+            ...(seat.coach ? { coach: true as const } : {}),
+            ...forgedPayload(entry.match),
+          });
+          for (const cid of entry.match.players.keys()) {
+            if (cid !== id) send(cid, { t: 'player_back', name: seat.name, team: seat.team });
+          }
+          console.log(`match ${seat.matchId}: ${seat.name} reconnected`);
+        }
+      }
+      return;
+    }
+
+    // A client already seated in a live match cannot re-enter matchmaking
+    // (review F.2: interleaved double-match snapshots corrupted the mirror).
+    const inMatch = client.matchId !== null;
+    // Capacity gate at the entry points: a full server refuses new games
+    // politely instead of degrading every running one.
+    const atCapacity = matches.size >= MAX_MATCHES;
+    const refuseCapacity = (): void =>
+      send(id, { t: 'error', message: 'The server is at capacity, try again in a bit.' });
+    // A Guest has the public queue and the match it lands in (ADR 0024);
+    // every other door on the socket still needs an account.
+    if (client.guest && guestRefused(msg)) {
+      send(id, { t: 'error', message: 'This needs an account.' });
+      return;
+    }
+    switch (msg.t) {
+      case 'queue': {
+        if (inMatch) break;
+        // Rated-match leavers sit out a short lockout before requeueing.
+        const locked = rejoins.queueLockRemaining(client.accountId, now);
+        if (locked > 0) {
+          send(id, {
+            t: 'error',
+            message: `You left a rated match. The queue unlocks in ${Math.ceil(locked / 1000)}s.`,
+          });
+          break;
+        }
+        // Nobody waiting and a public match under way with people in it:
+        // take a bot's seat there instead of a queue of one (ADR 0025).
+        // It opens no new match, so capacity does not stand in the way.
+        if (msg.forge !== true && matchmaker.queuedCount === 0 && dropInto(client)) break;
+        if (atCapacity) refuseCapacity();
+        else {
+          // One seat across both queues: entering one leaves the other.
+          const mm = msg.forge === true ? forgeMatchmaker : matchmaker;
+          for (const other of matchmakers) if (other !== mm) other.removeEverywhere(id, now);
+          mm.addToQueue(id, client.name, now);
+        }
+        break;
+      }
+      case 'start_now':
+        if (!inMatch) for (const mm of matchmakers) mm.startNow(id, now);
+        break;
+      case 'leave': {
+        for (const mm of matchmakers) mm.removeEverywhere(id);
+        // A deliberate walk-out from a live match: hand the champion to a
+        // bot for good and hold NO seat reservation. Reservations are for
+        // dropped connections; a player who chose to leave (end screen,
+        // escape menu) must not be pulled back in by their next queue.
+        const leftMatchId = client.matchId;
+        if (leftMatchId !== null) {
+          const entry = matches.get(leftMatchId);
+          if (entry && !entry.match.players.has(id)) {
+            // A spectator walking out only stops watching: no bot
+            // takeover, no penalty, no team notice.
+            client.matchId = null;
+            entry.match.removeSpectator(id);
+          } else if (entry) {
+            walkOutOfMatch(client, entry, leftMatchId);
+          } else {
+            client.matchId = null;
+            rejoins.drop(client.accountId);
+          }
+        }
+        break;
+      }
+      case 'create_lobby':
+        if (inMatch) break;
+        if (atCapacity) refuseCapacity();
+        else {
+          // Lobbies live on the classic matchmaker; a Forge-queue seat is
+          // given up on the way in, like any other queue switch.
+          forgeMatchmaker.removeEverywhere(id, now);
+          matchmaker.createLobby(id, client.name, now);
+        }
+        break;
+      case 'join_lobby':
+        if (!inMatch) {
+          forgeMatchmaker.removeEverywhere(id, now);
+          matchmaker.joinLobby(id, client.name, String(msg.code ?? ''));
+        }
+        break;
+      case 'lobby_team':
+        if (!inMatch) matchmaker.setLobbyTeam(id, msg.team);
+        break;
+      case 'queue_party':
+        if (inMatch) break;
+        if (atCapacity) refuseCapacity();
+        else if (rejoins.queueLockRemaining(client.accountId, now) > 0) {
+          const locked = rejoins.queueLockRemaining(client.accountId, now);
+          send(id, {
+            t: 'error',
+            message: `You left a rated match. The queue unlocks in ${Math.ceil(locked / 1000)}s.`,
+          });
+        } else matchmaker.queuePartyFromLobby(id, now);
+        break;
+      case 'spectate': {
+        if (inMatch) break;
+        const target = typeof msg.matchId === 'number' ? matches.get(msg.matchId) : undefined;
+        if (!target || target.endedAt !== null || target.abandonedAt !== null) {
+          send(id, { t: 'error', message: 'That match is over or gone.' });
+          break;
+        }
+        if (!target.match.addSpectator(id, msg.team === 1 ? 1 : 0)) {
+          send(id, { t: 'error', message: 'That match has no spectator slots left.' });
+          break;
+        }
+        client.matchId = msg.matchId as number;
+        send(id, {
+          t: 'match_start',
+          selfUnitId: 0,
+          team: msg.team === 1 ? 1 : 0,
+          ...forgedPayload(target.match),
+        });
+        break;
+      }
+      case 'start_lobby':
+        if (!inMatch) matchmaker.startLobby(id, now);
+        break;
+      case 'pick':
+        for (const mm of matchmakers) mm.pick(id, msg.championId, msg.sigils, msg.skin, msg.bot);
+        break;
+      case 'chat':
+      case 'ping': {
+        if (client.matchId === null) break;
+        const entry = matches.get(client.matchId);
+        const player = entry?.match.players.get(id);
+        if (!entry || !player) break;
+        // Team-scoped, like the snapshots: a chat line or a ping must never
+        // hand the enemy a position (review: cross-team ping leak).
+        if (msg.t === 'chat') {
+          const text = String(msg.text ?? '')
+            .trim()
+            .slice(0, 200);
+          if (!text) break;
+          for (const cid of entry.match.teamRecipients(id)) {
+            send(cid, { t: 'chat', from: player.name, team: player.team, text });
+          }
+        } else if (isFiniteVec(msg.x, msg.z)) {
+          for (const cid of entry.match.teamRecipients(id)) {
+            send(cid, {
+              t: 'ping',
+              from: player.name,
+              team: player.team,
+              x: msg.x,
+              z: msg.z,
+            });
+          }
+        }
+        break;
+      }
+      default: {
+        if (client.matchId === null) return;
+        const entry = matches.get(client.matchId);
+        if (entry) entry.match.handleCommand(id, msg);
+      }
+    }
+  });
+
+  ws.on('close', () => {
+    connections.release(ip);
+    for (const mm of matchmakers) mm.removeEverywhere(id);
+    const matchId = client.matchId;
+    clients.delete(id);
+    // Reap matches whose players are all gone (review F.2: ghost matches
+    // kept ticking until a Sanctum fell).
+    if (matchId !== null) {
+      const entry = matches.get(matchId);
+      if (entry) {
+        // A dropped spectator just stops watching.
+        entry.match.removeSpectator(id);
+        // Hand the abandoned champion to a bot, tell the team, and reserve
+        // the seat against the account so the player can come back, from
+        // this browser or any other they log in on.
+        const left = entry.match.handleDisconnect(id);
+        if (left) {
+          rejoins.reserve(client.accountId, { matchId, ...left });
+          for (const cid of entry.match.players.keys()) {
+            send(cid, { t: 'player_left', name: left.name, team: left.team });
+          }
+        }
+        // Not reaped on the spot: the seat reservations above deserve a
+        // grace window, so an accidental reload can come back (the world
+        // loop reaps once the window closes).
+        const anyConnected = [...entry.match.players.keys()].some((cid) => clients.has(cid));
+        if (!anyConnected && entry.abandonedAt === null) {
+          entry.abandonedAt = Date.now();
+          console.log(`match ${matchId} abandoned: holding for rejoin grace`);
+        }
+      }
+    }
+  });
+});
+
+// --- The world loop: fixed-step accumulator, guarded per match ---
+
+// The loop's own numbers (server/tick_meter.ts): a line every five seconds
+// while a match is on, and the last window on /healthz.
+const meter = new TickMeter(Date.now());
+
+let last = Date.now();
+let acc = 0;
+setInterval(() => {
+  const now = Date.now();
+  acc += Math.min(now - last, 500);
+  last = now;
+  for (const mm of matchmakers) mm.tickClock(now);
+  let ran = 0;
+
+  // Reap abandoned matches whose rejoin grace ran out.
+  for (const [matchId, entry] of matches) {
+    if (entry.abandonedAt !== null && now - entry.abandonedAt > REJOIN_GRACE_MS) {
+      matches.delete(matchId);
+      rejoins.pruneMatch(matchId);
+      console.log(`match ${matchId} reaped: rejoin grace expired`);
+    }
+  }
+
+  while (acc >= TICK_MS) {
+    acc -= TICK_MS;
+    const tickStart = performance.now();
+    for (const [matchId, entry] of matches) {
+      try {
+        entry.match.tick();
+        if (entry.botSeats.size > 0) {
+          entry.ledger.observe(entry.match.sim.tickCount, entry.match.lastEvents, entry.match.sim);
+        }
+        const score = entry.match.sim.tickCount % 40 === 0 ? entry.match.buildScore() : null;
+        for (const player of entry.match.players.values()) {
+          const snap = entry.match.buildSnapshotFor(player.clientId);
+          if (snap) send(player.clientId, snap);
+          if (score) send(player.clientId, score);
+        }
+        for (const cid of entry.match.spectators.keys()) {
+          const snap = entry.match.buildSpectatorSnapshotFor(cid);
+          if (snap) send(cid, snap);
+          if (score) send(cid, score);
+        }
+        // AFK sweep: a connected player silent for two minutes in a live
+        // match with other humans walks out (bot takeover, penalty when
+        // rated); a solo-vs-bots match harms nobody and is left alone.
+        if (
+          entry.match.sim.tickCount % 200 === 0 &&
+          entry.match.sim.winner === null &&
+          entry.match.players.size >= 2
+        ) {
+          for (const cid of entry.match.idleClientIds(AFK_IDLE_TICKS)) {
+            const c = clients.get(cid);
+            if (!c) continue;
+            send(cid, {
+              t: 'error',
+              message: 'Removed for inactivity: a bot takes your champion over.',
+            });
+            walkOutOfMatch(c, entry, matchId);
+            console.log(`match ${matchId}: ${c.name} removed for inactivity`);
+          }
+        }
+        if (entry.match.sim.winner !== null && entry.endedAt === null) {
+          entry.endedAt = now;
+          // Record the finished match once, the moment the winner lands:
+          // seats still held by a connected human carry their player id.
+          const accountIdByUnit = new Map<number, number>();
+          // A Guest's seat is recorded like a house bot's (ADR 0024), and
+          // so is a seat taken mid-match (ADR 0025).
+          for (const p of entry.match.players.values()) {
+            const c = clients.get(p.clientId);
+            if (c && !c.guest && !entry.dropIns.has(c.accountId)) {
+              accountIdByUnit.set(p.unitId, c.accountId);
+            }
+          }
+          // Rating policy (server/rating.ts, server/match_rating.ts): only
+          // public-queue matches with an OWNED seat on each side are rated,
+          // by hand or by the account's bot; every owned seat on a team
+          // moves together, each on the rating of its way. A Forge match
+          // reads and moves the Forge queue's own rating (ADR 0011), same
+          // policy, own ladder. A coach who closed the tab is still rated:
+          // the bot seat is the account's, connected or not.
+          const owned: OwnedSeat[] = [];
+          for (const p of entry.match.players.values()) {
+            if (p.coach) continue;
+            const pid = accountIdByUnit.get(p.unitId);
+            if (pid !== undefined && registry.findById(pid)) {
+              owned.push({ accountId: pid, team: p.team, way: 'hand' });
+            }
+          }
+          const ways = new Map<number, 'bot'>();
+          for (const [unitId, seat] of entry.botSeats) {
+            const u = entry.match.sim.units.get(unitId);
+            if (!u || !registry.findById(seat.accountId)) continue;
+            accountIdByUnit.set(unitId, seat.accountId);
+            ways.set(unitId, 'bot');
+            owned.push({ accountId: seat.accountId, team: u.team, way: 'bot', botId: seat.botId });
+          }
+          // The seat's rated subject (ADR 0016): the bot on a bot seat, the
+          // account on a hand seat, the Forge's own rating in its queue.
+          const book: RatingBook = {
+            read: (seat) => {
+              if (seat.way === 'bot') return botStore.botRating(seat.botId ?? '', 'live').rating;
+              if (entry.forge) return forgeStore.forgeRating(seat.accountId).rating;
+              return registry.findById(seat.accountId)?.rating ?? BASE_RATING;
+            },
+            apply: (seat, delta) => {
+              if (seat.way === 'bot') {
+                botStore.applyBotRating(seat.botId ?? '', seat.accountId, 'live', delta);
+              } else if (entry.forge) forgeStore.applyForgeRating(seat.accountId, delta);
+              else registry.applyRating(seat.accountId, delta);
+            },
+          };
+          const outcome = rateMatch(owned, entry.match.sim.winner, entry.ratedEligible, book);
+          const rated = outcome.rated;
+          const deltas = new Map<number, number>();
+          for (const r of outcome.results) deltas.set(r.accountId, r.delta);
+          // Tell each connected owner what the match did to their rating;
+          // the end screen shows it next to the final scoreboard.
+          for (const p of entry.match.players.values()) {
+            const pid = accountIdByUnit.get(p.unitId);
+            const result = outcome.results.find(
+              (r) => r.accountId === pid && r.way === (p.coach ? 'bot' : 'hand'),
+            );
+            if (pid === undefined || !result) continue;
+            send(p.clientId, {
+              t: 'match_result',
+              rated,
+              delta: result.delta,
+              rating: result.rating,
+              ...(entry.forge ? { queue: 'forge' as const } : {}),
+              ...(p.coach ? { way: 'bot' as const } : {}),
+            });
+          }
+          // Save the replay first so the match record can point at it.
+          let replayId: number | undefined;
+          if (entry.match.replayComplete) {
+            try {
+              saveJsonAtomic(path.join(REPLAYS_DIR, `${matchId}.json`), {
+                version: REPLAY_VERSION,
+                // What the match ran on: a replay is a re-simulation, so
+                // a record whose content has moved plays a different
+                // match and the viewer must refuse it.
+                content: contentFingerprint(starOrchard()),
+                seed: entry.match.seed,
+                picks: entry.match.replayPicks,
+                events: entry.match.replayEvents,
+                ticks: entry.match.sim.tickCount,
+                // A forged id means nothing outside its match: the replay
+                // carries the definitions themselves (ADR 0010).
+                ...forgedPayload(entry.match),
+              });
+              replayId = matchId;
+              pruneNumberedJson(REPLAYS_DIR, REPLAY_KEEP, botStore.heldReplayIds());
+            } catch (err) {
+              console.error('replay save failed', err);
+            }
+          }
+          const score = entry.match.buildScore();
+          if (score.t === 'score') {
+            const rec = buildMatchRecord(
+              score.rows,
+              accountIdByUnit,
+              entry.match.sim.winner,
+              entry.match.sim.time,
+              now,
+              { rated, deltas, ways, ...(entry.forge ? { queue: 'forge' as const } : {}) },
+              replayId,
+            );
+            matchLog.push(rec);
+            try {
+              appendJsonl(MATCHES_FILE, rec);
+            } catch (err) {
+              console.error('match log append failed', err);
+            }
+            payLaurels(rec);
+            console.log(`match ${matchId} recorded (${accountIdByUnit.size} human seat(s))`);
+            // The bot seats' Records: the same rows and the ledger's report,
+            // kind live, the rating movement when there was one.
+            const report = entry.ledger.report();
+            for (const [unitId, seat] of entry.botSeats) {
+              if (seat.botId === undefined) continue;
+              const u = entry.match.sim.units.get(unitId);
+              if (!u) continue;
+              const delta = deltas.get(seat.accountId);
+              try {
+                addEntry(botStore, seat.botId, seat.accountId, {
+                  kind: 'live',
+                  at: now,
+                  seed: entry.match.seed,
+                  team: u.team,
+                  winner: entry.match.sim.winner,
+                  ticks: entry.match.sim.tickCount,
+                  version: seat.version ?? 1,
+                  edited: false,
+                  botUnitId: unitId,
+                  score: score.rows,
+                  report,
+                  replayId: replayId ?? null,
+                  ...(rated && delta !== undefined ? { ratingDelta: delta } : {}),
+                });
+              } catch (err) {
+                console.error('record entry failed', err);
+              }
+            }
+          }
+        }
+        if (entry.endedAt !== null && now - entry.endedAt > MATCH_LINGER_MS) {
+          for (const player of entry.match.players.values()) {
+            const c = clients.get(player.clientId);
+            if (c) c.matchId = null;
+            send(player.clientId, { t: 'match_end' });
+          }
+          for (const cid of entry.match.spectators.keys()) {
+            const c = clients.get(cid);
+            if (c) c.matchId = null;
+            send(cid, { t: 'match_end' });
+          }
+          matches.delete(matchId);
+          rejoins.pruneMatch(matchId);
+          console.log(`match ${matchId} closed`);
+        }
+        entry.failures = 0;
+      } catch (err) {
+        console.error(`match ${matchId} tick failed`, err);
+        entry.failures += 1;
+        if (entry.failures > 200) {
+          for (const player of entry.match.players.values()) {
+            const c = clients.get(player.clientId);
+            if (c) c.matchId = null;
+            send(player.clientId, { t: 'match_end' });
+          }
+          for (const cid of entry.match.spectators.keys()) {
+            const c = clients.get(cid);
+            if (c) c.matchId = null;
+            send(cid, { t: 'match_end' });
+          }
+          matches.delete(matchId);
+          rejoins.pruneMatch(matchId);
+          console.error(`match ${matchId} force-closed after repeated tick failures`);
+        }
+      }
+    }
+    if (matches.size > 0) meter.tick(performance.now() - tickStart, ran > 0);
+    ran++;
+  }
+  const report = meter.report(
+    now,
+    [...matches.values()].filter((e) => e.endedAt === null).length,
+    clients.size,
+  );
+  if (report && report.ticks > 0) console.log(formatTickReport(report));
+}, 25);
+
+// Last-resort guards: a throw outside the per-match try/catch must never
+// take down every live match silently. Log loudly and keep serving; the
+// per-match failure counter already contains repeated sim faults.
+process.on('uncaughtException', (err) => {
+  console.error('uncaught exception (server kept alive)', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('unhandled rejection (server kept alive)', err);
+});
+
+// Graceful stop: close the sockets so clients get a clean disconnect notice
+// instead of a timeout.
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => {
+    console.log(`${sig}: shutting down`);
+    // Write the session expiry extensions that touch() only made in
+    // memory, so a restart does not send everyone back to the login form.
+    sessions.flush();
+    for (const c of clients.values()) c.ws.close();
+    wss.close();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2000).unref();
+  });
+}
+
+// Housekeeping, hourly. None of this is load bearing: an expired session
+// and a spent link are already refused on read, and a lapsed email claim
+// is released the moment somebody asks for the address. This only stops
+// the three files growing with records nothing will ever ask about again.
+setInterval(() => {
+  const now = Date.now();
+  const sessionsDropped = sessions.purgeExpired(now);
+  const tokensDropped = tokens.purgeExpired(now);
+  const claimsReleased = registry.purgeExpiredClaims(now);
+  // In memory and minutes old, so this is the one that would never grow
+  // anyway; swept here so nothing is left holding a state from last week.
+  discordFlows.purge(now);
+  // Rate-limit windows are a minute long; addresses idle past one go.
+  apiLimiter.purge(now);
+  // Quota events older than the day window will never be counted again.
+  forgeStore.pruneQuotaEvents(now - DAY_MS);
+  botStore.pruneArenaEvents(now - DAY_MS);
+  // Reports older than a week have been briefed and coached on already.
+  botStore.pruneBotReports(now - 7 * DAY_MS);
+  if (sessionsDropped + tokensDropped + claimsReleased > 0) {
+    console.log(
+      `housekeeping: ${sessionsDropped} session(s), ${tokensDropped} link(s), ` +
+        `${claimsReleased} email claim(s) released after ${Math.round(CLAIM_TTL_MS / 86_400_000)} days`,
+    );
+  }
+}, 60 * 60_000).unref();
+
+// The Arena's rounds: checked every minute, run when due, one round at a
+// time; the round stamps itself first so a crash never replays it.
+let arenaRoundRunning = false;
+setInterval(() => {
+  // The night: once a day, after the rounds, every deposited bot is
+  // briefed and coached, one after another on the same runner.
+  if (!arenaRoundRunning && nightDue(botStore.arenaLastNightAt(), Date.now())) {
+    arenaRoundRunning = true;
+    botStore.setArenaLastNightAt(Date.now());
+    void runNight(nightCoachDeps)
+      .catch((err) => console.error('night coach failed', err))
+      .finally(() => {
+        arenaRoundRunning = false;
+      });
+    return;
+  }
+  if (arenaRoundRunning || !roundDue(arenaDeps)) return;
+  arenaRoundRunning = true;
+  void runArenaRound(arenaDeps)
+    .catch((err) => console.error('arena round failed', err))
+    .finally(() => {
+      arenaRoundRunning = false;
+    });
+}, 60_000).unref();
+
+server.listen(PORT, HOST, () => {
+  console.log(`claude-of-legends server on ${HOST ?? '0.0.0.0'}:${PORT} (serving ${DIST})`);
+  // Said at boot so a misconfigured relay is found now, rather than the
+  // first time a player forgets their password.
+  console.log(`mail: ${mailer.description}, links point at ${ORIGIN}`);
+  console.log(
+    `arena: ${arenaRunner.hasWorker ? 'worker thread' : 'inline (no worker bundle found)'}`,
+  );
+  console.log(
+    DISCORD
+      ? `discord: sign-in on, redirect ${DISCORD.redirectUri}${
+          DISCORD.guild
+            ? `, auto-join into guild ${DISCORD.guild.id}`
+            : ', no auto-join (no DISCORD_BOT_TOKEN and DISCORD_GUILD_ID set)'
+        }`
+      : 'discord: off (no DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET set)',
+  );
+  console.log(
+    `edge: ${EDGE.hops} trusted proxy hop(s), origins ${
+      EDGE.origins.length > 0 ? EDGE.origins.join(' ') : 'same-host only'
+    }`,
+  );
+  console.log(
+    STATS_ON
+      ? `stats: on, ${STATS_SCRIPT} tagged for site ${STATS_WEBSITE_ID}`
+      : STATS_WEBSITE_ID === ''
+        ? 'stats: off (no STATS_WEBSITE_ID set)'
+        : 'stats: off (STATS_WEBSITE_ID is not a site id)',
+  );
+  // In dev the vite server owns the client and this warning is expected
+  // noise only when dist was never built; in production it means the image
+  // or the start script skipped `pnpm build`.
+  void stat(path.join(DIST, 'index.html')).catch(() => {
+    console.warn('dist/index.html not found: the client is not built (run "pnpm build")');
+  });
+});

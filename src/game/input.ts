@@ -1,0 +1,213 @@
+// Local input, kept dumb: it reports ground points and key presses; the
+// entry point decides what they mean. Keys: right-click move/attack, A
+// attack-move, B recall (or buy the selected shop item), QWER abilities,
+// Shift/Alt+QWER level abilities, DF sigils, P shop, Tab scoreboard,
+// Enter chat (or confirm the selected shop item), G ping, Space center
+// camera, Escape menu.
+
+import type { Renderer } from '../render/renderer';
+import type { AbilityKey, Vec2 } from '../sim/types';
+import type { SlotPress } from './thumb_cast';
+
+export interface InputHandlers {
+  onRightClick(p: Vec2, screenX: number, screenY: number): void;
+  // Left-click selects a unit (target frame) or clears the selection.
+  onLeftClick(screenX: number, screenY: number): void;
+  onHover(screenX: number, screenY: number): void;
+  // Aim-then-cast: keydown begins aiming (the range preview follows the
+  // cursor); keyup fires the cast at the cursor's CURRENT ground point. A
+  // quick tap therefore still casts almost instantly, and holding lets the
+  // player place the shape before committing. aim is null when the cursor
+  // has no ground under it at release.
+  onCast(key: AbilityKey, aim: Vec2): void;
+  onAimEnd(key: AbilityKey, aim: Vec2 | null): void;
+  onLevelAbility(key: AbilityKey): void;
+  onCastSigil(slot: number, aim: Vec2): void;
+  onStop(): void;
+  onAttackMove(aim: Vec2): void;
+  onRecall(): void;
+  onRecenterCamera(): void;
+  onToggleShop(): void;
+  onShopQuickBuy(): void;
+  onToggleScoreboard(): void;
+  onToggleMenu(): void;
+  onOpenChat(): void;
+  onPing(aim: Vec2): void;
+  // The left thumb's stick (thumb_stick.ts): a world direction, unit
+  // length, every frame while the thumb steers; null when it rests or
+  // lifts. The handler turns it into the sim's move orders.
+  onThumbMove(dir: Vec2 | null): void;
+  // The right thumb on a slot (thumb_cast.ts). While it slides, the aim:
+  // a world direction and how far along the range, 0..1, or null once
+  // back in the dead zone. Then the press ends as a quick tap, an aimed
+  // cast, or a cancel. A sigil carries its slide with the press, since it
+  // has no preview to follow it. The attack button asks for the nearest
+  // enemy.
+  onThumbAim(key: AbilityKey, dir: Vec2 | null, k: number): void;
+  onThumbCast(key: AbilityKey, press: SlotPress): void;
+  onThumbSigil(slot: number, press: SlotPress, dir: Vec2 | null, k: number): void;
+  onThumbAttack(): void;
+  isShopOpen(): boolean;
+  // True once this match has a winner: the end screen owns the page, and the
+  // keys that would steal Tab/Enter from its buttons stand down.
+  isEnded(): boolean;
+  isTyping(): boolean;
+}
+
+const ABILITY_KEYS: Readonly<Record<string, AbilityKey>> = {
+  q: 'Q',
+  w: 'W',
+  e: 'E',
+  r: 'R',
+};
+
+const SIGIL_KEYS: Readonly<Record<string, number>> = { d: 0, f: 1 };
+
+export function resolveLevelAbilityHotkey(
+  key: string,
+  modifiers: { altKey: boolean; shiftKey: boolean },
+): AbilityKey | null {
+  if (!modifiers.altKey && !modifiers.shiftKey) return null;
+  return ABILITY_KEYS[key.toLowerCase()] ?? null;
+}
+
+export type ReservedHotkeyAction =
+  | 'toggle-scoreboard'
+  | 'toggle-menu'
+  | 'shop-buy'
+  | 'open-chat'
+  | 'recenter-camera'
+  | 'toggle-shop'
+  | 'recall';
+
+export function resolveReservedHotkey(
+  key: string,
+  state: { shopOpen: boolean; ended: boolean },
+): ReservedHotkeyAction | null {
+  // Once the end screen owns the page, Tab and Enter must fall through to the
+  // browser so keyboard focus can reach — and press — Play again and Return
+  // to menu; swallowing Tab used to leave the keyboard with no path to the
+  // end buttons at all.
+  if (key === 'Tab') return state.ended ? null : 'toggle-scoreboard';
+  if (key === 'Escape') return 'toggle-menu';
+  if (key === 'Enter') {
+    if (state.ended) return null;
+    return state.shopOpen ? 'shop-buy' : 'open-chat';
+  }
+  if (key === ' ') return 'recenter-camera';
+  const lower = key.toLowerCase();
+  if (lower === 'p') return 'toggle-shop';
+  if (lower === 'b') return state.shopOpen ? 'shop-buy' : 'recall';
+  return null;
+}
+
+// Returns a teardown that detaches every listener, so a match can end
+// without leaving dead handlers on the window (the menu comes back on the
+// same page now; there is no reload to sweep them away).
+export function setupInput(renderer: Renderer, handlers: InputHandlers): () => void {
+  const el = renderer.domElement;
+  let mouseX = 0;
+  let mouseY = 0;
+
+  // Touch pointers are not this module's: game/touch.ts gives them their
+  // own tap and drag semantics, and a finger has no hover.
+  const onPointerMove = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') return;
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    handlers.onHover(e.clientX, e.clientY);
+  };
+  el.addEventListener('pointermove', onPointerMove);
+
+  const onContextMenu = (e: Event): void => e.preventDefault();
+  el.addEventListener('contextmenu', onContextMenu);
+
+  const onPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'touch') return;
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (e.button === 0) {
+      handlers.onLeftClick(e.clientX, e.clientY);
+      return;
+    }
+    if (e.button !== 2) return;
+    const p = renderer.groundPointAt(e.clientX, e.clientY);
+    if (p) handlers.onRightClick(p, e.clientX, e.clientY);
+  };
+  el.addEventListener('pointerdown', onPointerDown);
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (handlers.isTyping()) return;
+    const reserved = resolveReservedHotkey(e.key, {
+      shopOpen: handlers.isShopOpen(),
+      ended: handlers.isEnded(),
+    });
+    if (reserved) {
+      if (reserved === 'toggle-scoreboard') {
+        e.preventDefault();
+        if (!e.repeat) handlers.onToggleScoreboard();
+      } else if (reserved === 'toggle-menu') handlers.onToggleMenu();
+      else if (reserved === 'shop-buy') {
+        if (e.key === 'Enter') e.preventDefault();
+        handlers.onShopQuickBuy();
+      } else if (reserved === 'open-chat') handlers.onOpenChat();
+      else if (reserved === 'recenter-camera') handlers.onRecenterCamera();
+      else if (reserved === 'toggle-shop') handlers.onToggleShop();
+      else handlers.onRecall();
+      return;
+    }
+    if (e.repeat) return;
+    const aim = (): Vec2 | null => renderer.groundPointAt(mouseX, mouseY);
+    const lower = e.key.toLowerCase();
+    // Browser-side HUD clicks can stall under managed software GL, and Alt
+    // alone is a brittle modifier on some desktop stacks. Let either Alt or
+    // Shift spend the point so the same native world action stays reachable
+    // without the HUD plus button.
+    const levelKey = resolveLevelAbilityHotkey(e.key, e);
+    if (levelKey) {
+      e.preventDefault();
+      handlers.onLevelAbility(levelKey);
+      return;
+    }
+    if (lower === 'a') {
+      const p = aim();
+      if (p) handlers.onAttackMove(p);
+      return;
+    }
+    if (lower === 'g') {
+      const p = aim();
+      if (p) handlers.onPing(p);
+      return;
+    }
+    if (lower === 's') {
+      handlers.onStop();
+      return;
+    }
+    const sigilSlot = SIGIL_KEYS[lower];
+    if (sigilSlot !== undefined) {
+      const p = aim();
+      if (p) handlers.onCastSigil(sigilSlot, p);
+      return;
+    }
+    const key = ABILITY_KEYS[lower];
+    if (!key) return;
+    const p = aim();
+    if (p) handlers.onCast(key, p);
+  };
+  window.addEventListener('keydown', onKeyDown);
+
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (handlers.isTyping()) return;
+    const key = ABILITY_KEYS[e.key.toLowerCase()];
+    if (key) handlers.onAimEnd(key, renderer.groundPointAt(mouseX, mouseY));
+  };
+  window.addEventListener('keyup', onKeyUp);
+
+  return () => {
+    el.removeEventListener('pointermove', onPointerMove);
+    el.removeEventListener('contextmenu', onContextMenu);
+    el.removeEventListener('pointerdown', onPointerDown);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+  };
+}

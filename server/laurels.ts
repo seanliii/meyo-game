@@ -1,0 +1,142 @@
+// What a champion costs and what a match pays, in laurels (ADR 0018).
+// Data as code and the only place a price is written down, the twin of
+// server/embers.ts and here for the same reason: a price never reaches a
+// match, so it has no business in src/sim/.
+//
+// The two units never meet. An ember is a cent the server spends at a
+// provider and is granted, never earned; a laurel is earned by playing
+// and buys only what costs nothing to hand out. Nothing converts one into
+// the other, because an economy where playtime reaches the provider bill
+// has no ceiling (ADR 0017, ADR 0018).
+
+import { CHAMPION_LIST } from '../src/sim/content/champions';
+import type { MatchRecord } from './records';
+import { playedByHand, seatWay } from './ways';
+
+// The collection every account starts with (CONTEXT.md: Collection). One
+// clean five-role starter roster, so a fresh player can field a full
+// classic comp without the match immediately falling back to the creature
+// outliers that make the battlefield read like a prototype.
+export const STARTER_COLLECTION: readonly string[] = [
+  'korrath',
+  'dain',
+  'sylra',
+  'vesk',
+  'torv',
+];
+
+// Hand-set, per champion, moved in either direction whenever the
+// maintainer decides; there is deliberately no formula behind these
+// (ADR 0018). Korrath and Vesk cost more because they arrive with their
+// own models while the other eight wear shared CC0 pack assets
+// (src/render/champions/manifest.ts).
+export const CHAMPION_PRICES: Readonly<Record<string, number>> = {
+  fenn: 500,
+  ashvyn: 500,
+  maera: 500,
+  elowen: 500,
+  rhoka: 500,
+};
+
+// What a match pays. The fixed part is deliberately the small one: it is
+// the part an idle player collects. Only the hand and forge ways pay at
+// all (server/ways.ts), so a bot playing overnight earns nothing.
+export const MATCH_LAURELS = 40;
+export const WIN_LAURELS = 100;
+export const FIRST_WIN_BONUS = 100;
+
+// An unrated match pays the fixed part and nothing else: no win, no
+// bonus. A match with no human on the other side is a stroll against
+// house bots, and at the first rates it paid exactly what a contested one
+// did, which put the two cheapest champions two matches apart and the
+// whole roster inside a fortnight of playing alone. It still pays
+// something, because at this population most matches are bot-filled and
+// a wall nobody can climb without opponents is worse than one climbed
+// slowly. An unrated win never spends the day's bonus either: the bonus
+// is there to be claimed in a real match.
+export function matchLaurels(won: boolean, firstWinOfDay: boolean, rated: boolean): number {
+  if (!rated) return MATCH_LAURELS;
+  return (won ? WIN_LAURELS : MATCH_LAURELS) + (won && firstWinOfDay ? FIRST_WIN_BONUS : 0);
+}
+
+export const DAY_MS = 24 * 60 * 60 * 1000;
+export const WEEK_MS = 7 * DAY_MS;
+
+// The day and week a moment falls in. Both are plain divisions of the
+// epoch rather than calendar arithmetic: no timezone, no scheduler, no
+// stored state, and the same answer on every host.
+export function dayIndex(at: number): number {
+  return Math.floor(at / DAY_MS);
+}
+
+export function weekIndex(at: number): number {
+  return Math.floor(at / WEEK_MS);
+}
+
+export const ROTATION_SIZE = 3;
+
+// What the rotation draws from: every roster champion outside the
+// starter, in roster order. A starter in the rotation would be a week
+// spent on champions everyone already owns.
+export const ROTATION_POOL: readonly string[] = CHAMPION_LIST.map((c) => c.id).filter(
+  (id) => !STARTER_COLLECTION.includes(id),
+);
+
+// The three champions every account may play this week whatever its
+// collection (CONTEXT.md: Rotation), the same three for everyone. A
+// window of three sliding one step a week, so each champion of the pool
+// is free three weeks out of six and the cycle never stalls.
+export function rotationAt(at: number): string[] {
+  const pool = ROTATION_POOL;
+  if (pool.length <= ROTATION_SIZE) return [...pool];
+  const week = weekIndex(at);
+  const out: string[] = [];
+  for (let i = 0; i < ROTATION_SIZE; i++) {
+    const id = pool[(((week + i) % pool.length) + pool.length) % pool.length];
+    if (id !== undefined) out.push(id);
+  }
+  return out;
+}
+
+// Everything an account may pick right now: its collection plus the week's
+// rotation. The floor this holds is what keeps blind pick from jamming
+// (ADR 0018): five starters plus three rotating is eight, and a team can
+// never take more than five of them from one player.
+export function playableAt(collection: readonly string[], at: number): string[] {
+  const out = [...collection];
+  for (const id of rotationAt(at)) if (!out.includes(id)) out.push(id);
+  return out;
+}
+
+// What this champion costs, or null when it is not for sale (a starter,
+// or an id that is not a roster champion at all).
+export function championPrice(championId: string): number | null {
+  return CHAMPION_PRICES[championId] ?? null;
+}
+
+export interface Backfill {
+  laurels: number;
+  lastWinDay: number | null;
+}
+
+// What an account's recorded matches would have earned, for the one
+// crossing into this economy (ADR 0018). Only the ways a person sat at
+// the keyboard for count, exactly as they will from now on, so a bot's
+// night of Arena rounds pays nothing retroactively either. Records arrive
+// oldest first, which is what makes the first win of each day readable.
+export function backfillLaurels(records: readonly MatchRecord[], accountId: number): Backfill {
+  let laurels = 0;
+  let lastWinDay: number | null = null;
+  for (const rec of records) {
+    for (const seat of rec.players) {
+      if (seat.accountId !== accountId) continue;
+      if (!playedByHand(seatWay(rec, seat))) continue;
+      const won = seat.team === rec.winner;
+      const day = dayIndex(rec.at);
+      const first = won && rec.rated && day !== lastWinDay;
+      if (first) lastWinDay = day;
+      laurels += matchLaurels(won, first, rec.rated);
+    }
+  }
+  return { laurels, lastWinDay };
+}

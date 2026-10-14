@@ -1,0 +1,649 @@
+// The front door: what a visitor sees before anything else, and the only
+// screen reachable without an account (ADR 0006).
+//
+// Its shape follows the one world-of-claudecraft uses for the same job,
+// because the job is the same: a browser game whose landing page IS the
+// application, so the page has to say what this is, prove it is alive,
+// and offer the two ways in, all above the fold and all in one screen.
+// The two ways in are the load-bearing part, and they are not a design
+// flourish: online needs an account because the server refuses anything
+// else, and offline needs none because it opens no connection at all.
+// The chrome it shares with the signed-in home lives in ui/page.ts.
+
+import { appNav } from '../game/nav';
+import { type AuthedAccount, buildAuthForm } from './auth';
+import type { DiscordResult } from './discord_entry';
+import { startBackdrop } from './home_backdrop';
+import { CONTRIBUTE_LEAD, CONTRIBUTE_TITLE, CONTRIBUTE_WAYS } from './landing_contribute';
+import { mountEmbers } from './landing_embers';
+import { mountLandingLadder } from './landing_ladder';
+import {
+  LANDING_MODES,
+  PLAY_NOW_CALL,
+  PLAY_NOW_FINE,
+  PLAY_NOW_LINE,
+  PRACTICE_ALONE_CALL,
+  PRACTICE_ART,
+} from './landing_modes';
+import { mountPresence } from './landing_presence';
+import { revealOnScroll } from './landing_reveal';
+import { DISCORD, PRIVACY } from './links';
+import { el, ensureMenuCss } from './menu';
+import { allNews, countdownText, dayText, isPinned, newestOf } from './news';
+import { newsImageUrl } from './news_images';
+import { openNews } from './news_section';
+import { buildPage, ensurePageCss, mountLiveStats, navLink } from './page';
+import { buildRepoLink } from './repo_link';
+
+// Only what the landing page adds to the shared chrome: the bento, which
+// is the home's row of tiles as a visitor can have it.
+const CSS = `
+/* Two ways in, one card each. The row used to be a group of three under
+   a heading that had to say "all three", which is a heading explaining a
+   layout: the reader could not see what the group was until they had
+   counted it, and the account read as the price of the ladder rather
+   than the way in. One card carries the account and shows what it opens
+   inside itself, the other is the practice match, and neither needs a
+   caption over it. The account card is the wider of the two: it is the
+   one with a form to type into. */
+.pg.land .pg-cards { display: grid; max-width: 1180px; gap: 18px; align-items: stretch;
+  margin-left: auto; margin-right: auto;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); }
+/* What the account opens, inside the card that opens it: the same three
+   paintings the home stands at full height, in the same order, so the
+   door and the room behind it look alike. Upright and edge to edge, with
+   no gap between them: one band of art rather than three chips, and the
+   form sits on it rather than under it. */
+/* The form and the band, side by side, the form first: it is the thing to
+   press, and the paintings are what pressing it opens. The band stretches
+   to whatever height the form takes rather than setting its own, so the
+   three paintings line up with the form's top and foot by construction
+   and no ratio has to be guessed at. */
+.pg-open-row { display: grid; gap: 16px; margin: 4px 0 2px; align-items: stretch;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+.pg-opens { display: grid; gap: 0; grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: 14px; overflow: hidden; border: 1px solid #2b3f60;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55); }
+.pg-opens-form { display: flex; flex-direction: column; justify-content: center;
+  padding: 16px; border-radius: 12px; border: 1px solid rgba(140, 168, 208, 0.28);
+  background: rgba(6, 10, 20, 0.72); }
+/* The other way in, wearing the practice tile's painting. Without one it
+   was two lines and a button beside a card carrying a form and three
+   paintings: an offer and a footnote under it, when the two are meant to
+   read as a choice. The painting takes whatever height the account card
+   leaves over, which is what puts the two feet on one line without either
+   card being told what it measures. */
+.pg-try { position: relative; overflow: hidden; flex: 1 1 auto; min-height: 150px;
+  margin: 0 0 14px; border-radius: 12px; border: 1px solid #2b3f60; background: #0a1120; }
+/* Composed upright like the band's three, so the crop favours the top and
+   the eye lands on the fight rather than on the ground in front of it. */
+.pg-try img { position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: 50% 30%; }
+/* The button sits at the foot of its card, under the painting. */
+.pg.land .pg-card.plain .menu-btn { margin-top: 4px; }
+/* The one door that needs nothing, so it is the one that glows: the card
+   breathes a gold halo and the button wears the GitHub star's gold with a
+   shine crossing it every few seconds. A visitor who reads nothing still
+   sees where to press. */
+/* It keeps the rise every card enters with, then breathes: one list, since
+   the rise is set per child and would otherwise take the property. */
+.pg.land .pg-cards .pg-card.glow { border-color: #b8963f;
+  animation: land-rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.9s backwards,
+    land-try-halo 3.2s ease-in-out 1.8s infinite; }
+@keyframes land-try-halo {
+  0%, 100% { border-color: #b8963f;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(232, 196, 108, 0.35),
+    0 0 34px rgba(232, 196, 108, 0.3); }
+  50% { border-color: #f3d98e;
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(243, 217, 142, 0.75),
+    0 0 80px rgba(240, 200, 110, 0.6); }
+}
+.pg.land .pg-card.glow h2 { color: #f0dca0; }
+.pg.land .pg-card .menu-btn.pg-play { position: relative; overflow: hidden;
+  padding: 14px 18px; font-size: 15px; font-weight: 800; letter-spacing: 1.2px;
+  text-transform: uppercase; color: #2a1d06; border: 1px solid #f3dc9a;
+  background: linear-gradient(180deg, #f6e3a6 0%, #e2bf64 55%, #c99a3c 100%);
+  box-shadow: 0 0 0 1px rgba(120, 86, 20, 0.6), 0 6px 22px rgba(232, 196, 108, 0.45),
+    inset 0 1px 0 rgba(255, 250, 225, 0.8);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease; }
+.pg.land .pg-card .menu-btn.pg-play:hover { transform: translateY(-1px); filter: brightness(1.08);
+  box-shadow: 0 0 0 1px rgba(120, 86, 20, 0.6), 0 8px 34px rgba(240, 206, 120, 0.75),
+    inset 0 1px 0 rgba(255, 250, 225, 0.9); }
+.pg.land .pg-card .menu-btn.pg-play::after { content: ''; position: absolute; top: 0; bottom: 0;
+  left: -60%; width: 45%; pointer-events: none; transform: skewX(-20deg);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0) 100%);
+  animation: land-try-shine 3.2s ease-in-out 1s infinite; }
+@keyframes land-try-shine { 0% { left: -60%; } 45%, 100% { left: 130%; } }
+/* Someone is on right now: a green light that breathes, and one line. */
+.pg.land .pg-presence { display: flex; align-items: center; gap: 9px; margin: 0 0 10px;
+  padding: 7px 11px; border-radius: 8px; border: 1px solid rgba(110, 214, 138, 0.35);
+  background: rgba(20, 60, 34, 0.45); color: #c8f0d2; font-size: 12.5px; line-height: 1.35; }
+.pg.land .pg-presence i { flex: none; width: 9px; height: 9px; border-radius: 50%;
+  background: #5fe08a; box-shadow: 0 0 0 0 rgba(95, 224, 138, 0.6);
+  animation: land-presence 1.8s ease-out infinite; }
+@keyframes land-presence {
+  0% { box-shadow: 0 0 0 0 rgba(95, 224, 138, 0.6); }
+  100% { box-shadow: 0 0 0 9px rgba(95, 224, 138, 0); }
+}
+/* The offline match, under the gold button: a line to read, not a second
+   button competing with it. */
+.pg.land .pg-alone { align-self: center; margin-top: 10px; padding: 4px 6px; border: 0;
+  background: none; font: inherit; font-size: 12px; color: #8ea4c4; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; }
+.pg.land .pg-alone:hover { color: #dceaff; }
+/* A phone's card is about 300 wide: one line, at a size that fits it. */
+@media (max-width: 560px) {
+  .pg.land .pg-card .menu-btn.pg-play { font-size: 13.5px; letter-spacing: 0.6px;
+    padding: 14px 10px; white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pg.land .pg-cards .pg-card.glow { animation: none; }
+  .pg.land .pg-card .menu-btn.pg-play::after { animation: none; display: none; }
+  .pg.land .pg-presence i { animation: none; }
+}
+
+/* One painting of the band. Not a button: all three are account features
+   (ADR 0006), so they carry no call to action and none lifts under the
+   pointer; the form beside them is the thing to press. No ratio of its
+   own: a third of the band's width by the whole of the form's height,
+   which is upright at every width the row survives. */
+.pg-mode { position: relative; overflow: hidden; background: #0a1120;
+  display: flex; align-items: flex-end; height: 100%; min-height: 0; }
+/* Both paintings are composed upright, which is why they can fill a tall
+   column edge to edge. The subject sits high in each, so the crop favours
+   the top and leaves the foot scrim room to sit on sky rather than on a
+   face. */
+.pg-mode img { position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: 50% 32%; }
+.pg-mode-body { position: relative; width: 100%; padding: 54px 12px 12px;
+  background: linear-gradient(180deg, rgba(4, 7, 16, 0) 0%, rgba(4, 7, 16, 0.82) 52%,
+    rgba(4, 7, 16, 0.96) 100%); }
+.pg-mode h3 { font-family: Cinzel, Georgia, serif; font-size: 15px; letter-spacing: 2.2px;
+  text-transform: uppercase; margin: 0; color: #e6d7a8; line-height: 1.1; }
+/* The verb under the name. A third of a band is a narrow column, so this
+   is three or four words that may wrap to two lines and never more, and
+   it holds both lines whether it needs them or not: one verb wrapping
+   pushed its own name up and left the three titles on three different
+   heights. */
+.pg-mode p { font-size: 11.5px; line-height: 1.35; color: #b9cbe4; margin: 4px 0 0;
+  min-height: 2.7em; }
+
+/* Four across needs about 1120: below that the sign-in form is squeezed
+   and the paintings turn into slivers. So the row folds instead of
+   shrinking. Both cards take the full width and the two paintings share
+   the row between them, at the 3/4 a phone gives them on the home; a card
+   is only ever as wide as its form wants to be, which is what the narrower
+   ceiling is for. */
+@media (max-width: 1120px) {
+  /* Two cards, stacked, and the free one first. The account card went
+     first until a phone was measured: with the form above it, the button
+     that needs no account sat 1402 px down an 844 px screen, one and
+     seven tenths of a screen of scrolling, and the two visitors who came
+     on phones one evening both left without finding it. The end screen
+     makes the account offer once a match has been played
+     (ui/account_offer.ts), which is the better moment to ask anyway. */
+  .pg.land .pg-cards { grid-template-columns: minmax(0, 1fr); max-width: 620px; gap: 22px; }
+  .pg.land .pg-cards .pg-card.plain { order: -1; }
+  /* Stacked there is no card beside it to match, so the painting stops
+     stretching and takes a shape of its own. The ceiling is what keeps it
+     from becoming the tallest thing on the page as the column widens:
+     without it the free card outgrew the account card at 1000, which
+     says the wrong thing about which of the two is the offer. */
+  .pg-try { flex: none; aspect-ratio: 16 / 7; max-height: 190px; }
+}
+/* Narrow, the two stack and the band goes first: it is what the card is
+   selling, and the form is what the reader scrolls to when they have
+   decided. With no form beside it the band has no height to borrow, so it
+   takes one of its own, upright the way the home draws it. */
+@media (max-width: 560px) {
+  .pg-open-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .pg-opens { order: -1; }
+  /* And on the free card the button climbs over the picture. A phone is
+     tall and narrow: heading, line, picture, fine print, button put the
+     one thing to press at the foot of a card that had already used the
+     screen. Heading, line, button, then the picture as what it is,
+     decoration under the offer. */
+  .pg.land .pg-card.plain > h2 { order: 1; }
+  .pg.land .pg-card.plain > p { order: 2; }
+  .pg.land .pg-card.plain > .pg-presence { order: 3; margin-top: 2px; }
+  .pg.land .pg-card.plain > .menu-btn { order: 3; margin-top: 2px; }
+  .pg.land .pg-card.plain > .pg-alone { order: 4; }
+  .pg.land .pg-card.plain > .pg-card-fine { order: 4; margin: 8px 0 0; }
+  .pg.land .pg-card.plain > .pg-try { order: 5; margin-top: 12px; }
+  .pg.land .pg-card.plain > .pg-news { order: 6; }
+  .pg-mode { height: auto; aspect-ratio: 3 / 4; }
+  .pg-mode-body { padding: 34px 8px 8px; }
+  .pg-mode h3 { font-size: 12px; letter-spacing: 1.2px; }
+  .pg-mode p { font-size: 10.5px; }
+}
+
+
+/* The second line of a way-in card: the caveats, which have to be read
+   before the button but must not compete with the offer above them. */
+.pg.land .pg-card .pg-card-fine { color: #8ea4c4; font-size: 12px; }
+/* The newest news, one line under the practice card (ui/news_section.ts). */
+.pg.land .pg-news {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px;
+  padding: 8px; border-radius: 8px; border: 1px solid #2e4468; background: #0f1730;
+  color: #c9d9ee; text-align: left; cursor: pointer; font: inherit;
+  transition: border-color 0.15s ease;
+}
+.pg.land .pg-news:hover { border-color: #5b84c9; }
+.pg.land .pg-news img { width: 84px; height: 48px; object-fit: cover; border-radius: 4px; flex: none; }
+.pg-news-words { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.pg-news-words small { font-size: 11px; color: #8ea4c4; text-transform: uppercase; letter-spacing: 0.6px; }
+.pg-news-words b { font-size: 13.5px; color: #fff; }
+.pg-news-host { position: fixed; inset: 0; z-index: 40; }
+
+/* The contribution band, under the two ways in. It is the one section
+   here that is not about playing, so it is set apart rather than made
+   into a fifth tile: a rule above it, no card, no painting, and the width
+   of the bento so the page keeps one edge. */
+.pg-give { max-width: 1180px; margin: 46px auto 0; padding-top: 34px;
+  border-top: 1px solid #22314e; }
+.pg-give h2 { font-family: Cinzel, Georgia, serif; font-size: 21px; letter-spacing: 2px;
+  text-transform: uppercase; color: #e6d7a8; margin: 0; line-height: 1.15; }
+.pg-give { text-align: center; }
+.pg-give > p { font-size: 13.5px; line-height: 1.6; color: #b9cbe4;
+  margin: 10px auto 0; max-width: 66ch; }
+/* The repository itself, under the lead: the three cards below it each
+   go somewhere inside it, and this is the whole of it. */
+.pg-give > .repo-link { margin-top: 22px; }
+.pg-give-way { text-align: left; }
+.pg-give-row { display: grid; gap: 16px; margin-top: 26px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pg-give-way { display: flex; flex-direction: column; border-radius: 12px;
+  border: 1px solid #22314e; background: rgba(10, 17, 32, 0.72); padding: 16px 18px 18px; }
+.pg-give-way h3 { font-family: Cinzel, Georgia, serif; font-size: 15px; letter-spacing: 1.6px;
+  text-transform: uppercase; color: #dfe7f5; margin: 0; }
+.pg-give-way p { font-size: 12.5px; line-height: 1.5; color: #9db2cf; margin: 8px 0 16px; }
+/* The link sits at the foot of every card whatever the line above it
+   runs to, so the three read as one row rather than three heights. */
+.pg-give-way a { margin-top: auto; align-self: flex-start; color: #e6d7a8;
+  text-decoration: none; font-size: 12.5px; letter-spacing: 0.4px;
+  border-bottom: 1px solid rgba(230, 215, 168, 0.35); padding-bottom: 1px; }
+.pg-give-way a:hover { border-bottom-color: #e6d7a8; }
+.pg-give-way a::after { content: ' \\2192'; }
+@media (max-width: 900px) {
+  .pg-give-row { grid-template-columns: minmax(0, 1fr); }
+  .pg-give { max-width: 620px; }
+}
+
+/* --- motion ---
+   The page moves, a little, in three ways: it arrives, it breathes, and
+   it answers the pointer. Arrival is a staggered rise, top to bottom, so
+   the eye is led from the crest to the two doors in the order the page
+   wants them read. Breathing is the art drifting behind the page, the
+   crest floating on its glow, and the embers (ui/landing_embers.ts).
+   The answer is a lift and a gold edge on whatever card the pointer is
+   over, and the painting inside it leaning in. Every keyframe here fills
+   backwards, never forwards: a forwards fill would pin the final
+   transform and swallow the hover lift underneath it. */
+@keyframes land-rise {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes land-lockup-in {
+  from { opacity: 0; transform: scale(0.88) translateY(14px); filter: brightness(1.8); }
+  60% { filter: brightness(1.15); }
+  to { opacity: 1; transform: scale(1) translateY(0); filter: brightness(1); }
+}
+@keyframes land-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes land-glow {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.12); }
+}
+@keyframes land-drift {
+  from { transform: scale(1.04) translate3d(0.6%, 0.4%, 0); }
+  to { transform: scale(1.12) translate3d(-0.8%, -0.9%, 0); }
+}
+/* The backdrop is shared with every pre-game screen (ui/home_backdrop.ts)
+   and its scrim favours the left, where the copy used to sit. The copy
+   is centered now, so the landing lays its own scrim: a vignette that
+   holds the edges and the foot, and a soft pool behind the hero. The
+   painting itself drifts, slowly enough to be felt and not seen. */
+.pg.land .menu-backdrop-art img { animation: land-drift 46s ease-in-out infinite alternate;
+  transform-origin: 50% 40%; }
+.pg.land .menu-backdrop-scrim { background:
+  radial-gradient(ellipse 46% 52% at 50% 36%, rgba(4, 7, 16, 0.58) 0%, rgba(4, 7, 16, 0) 100%),
+  linear-gradient(90deg, rgba(4, 7, 16, 0.55) 0%, rgba(4, 7, 16, 0) 28%,
+    rgba(4, 7, 16, 0) 72%, rgba(4, 7, 16, 0.55) 100%),
+  linear-gradient(180deg, rgba(4, 7, 16, 0.62) 0%, rgba(4, 7, 16, 0.2) 30%,
+    rgba(4, 7, 16, 0.94) 88%); }
+/* Arrival, top to bottom. */
+.pg.land .pg-bar { animation: land-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0s backwards; }
+.pg.land .pg-lockup { animation: land-lockup-in 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) 0.1s backwards; }
+.pg.land .pg-tag { animation: land-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.45s backwards; }
+.pg.land .pg-hero-cta { animation: land-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s backwards; }
+.pg.land .pg-card:nth-child(1) { animation: land-rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.75s backwards; }
+.pg.land .pg-card:nth-child(2) { animation: land-rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.9s backwards; }
+/* Breathing: the crest floats on a pool of gold light. The float is on
+   the image and the arrival on its heading, so the two transforms never
+   fight over one element. */
+.pg.land .pg-lockup img { animation: land-float 6.5s ease-in-out 1.2s infinite; }
+.pg.land .pg-lockup::before { content: ''; position: absolute; left: 50%; top: 42%; z-index: -1;
+  width: 150%; aspect-ratio: 1; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(232, 196, 108, 0.32) 0%, rgba(232, 196, 108, 0.1) 38%,
+    rgba(232, 196, 108, 0) 68%);
+  animation: land-glow 5.5s ease-in-out infinite; }
+/* The answer: a card lifts under the pointer and its edge turns gold. */
+.pg.land .pg-card { transition: transform 0.35s ease, box-shadow 0.35s ease,
+  border-color 0.35s ease; }
+.pg.land .pg-card:hover { transform: translateY(-4px); border-color: #b8963f;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(232, 196, 108, 0.18),
+    0 0 46px rgba(220, 184, 94, 0.14); }
+.pg-mode img, .pg-try img { transition: transform 1.4s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.pg.land .pg-card:hover .pg-mode img, .pg.land .pg-card:hover .pg-try img { transform: scale(1.06); }
+.pg-mode { transition: filter 0.4s ease; }
+.pg-mode:hover { filter: brightness(1.12); }
+/* The bar's sections underline themselves from the middle out. */
+.pg.land .pg-bar-links button { position: relative; padding-bottom: 2px; }
+.pg.land .pg-bar-links button::after { content: ''; position: absolute; left: 50%; right: 50%;
+  bottom: -2px; height: 1px; background: #e6d7a8; transition: left 0.25s ease, right 0.25s ease; }
+.pg.land .pg-bar-links button:hover::after { left: 0; right: 0; }
+/* Below the fold: hidden until scrolled to (ui/landing_reveal.ts), then
+   the heading rises and the three cards follow it one at a time. */
+.land-reveal { opacity: 0; transform: translateY(26px);
+  transition: opacity 0.9s ease, transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.land-reveal.in { opacity: 1; transform: translateY(0); }
+.pg-give .pg-give-way { opacity: 0; }
+.pg-give.in .pg-give-way { animation: land-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  opacity: 1; }
+.pg-give.in .pg-give-way:nth-child(1) { animation-delay: 0.15s; }
+.pg-give.in .pg-give-way:nth-child(2) { animation-delay: 0.3s; }
+.pg-give.in .pg-give-way:nth-child(3) { animation-delay: 0.45s; }
+.pg-give-way { transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease; }
+.pg-give-way:hover { transform: translateY(-3px); border-color: #6b5a2e;
+  background: rgba(14, 22, 40, 0.86); }
+/* Someone who asked for less motion gets the page at rest, with
+   everything visible: an entrance that never plays must not leave its
+   subject hidden. */
+@media (prefers-reduced-motion: reduce) {
+  .pg.land *, .pg.land *::before, .pg.land *::after {
+    animation: none !important; transition: none !important; }
+  .land-reveal, .pg-give .pg-give-way { opacity: 1; transform: none; }
+}
+`;
+
+let cssInstalled = false;
+function ensureCss(): void {
+  if (cssInstalled) return;
+  cssInstalled = true;
+  // These screens use .menu-btn and .menu-input without opening a card.
+  ensureMenuCss();
+  ensurePageCss();
+  const style = document.createElement('style');
+  style.textContent = CSS;
+  document.head.appendChild(style);
+}
+
+export type LandingResult =
+  // Signed in: everything the server allows is now reachable.
+  | { kind: 'account'; account: AuthedAccount }
+  // Chose the public queue as a Guest (ADR 0024).
+  | { kind: 'guest' }
+  // Chose the offline practice match, which needs no account.
+  | { kind: 'offline' };
+
+// Why the landing is being shown again, when it is: 'register' after a
+// visitor took the account offer at the end of a practice match
+// (ui/account_offer.ts), so the page opens on the form, on its register
+// tab, rather than on the hero they have already read.
+export type LandingIntent = 'register';
+
+// `discordResult` is what a round trip through Discord came back with, if
+// this load came from one; the credential panel is the only thing on this
+// page that has anything to say about it (ADR 0009).
+export function showLanding(
+  container: HTMLElement,
+  discordResult: DiscordResult | null = null,
+  intent: LandingIntent | null = null,
+): Promise<LandingResult> {
+  ensureCss();
+  return new Promise((resolve) => {
+    const { root, inner, bar, hero } = buildPage('land', true);
+    const stopBackdrop = startBackdrop(root);
+    const stopEmbers = mountEmbers(root);
+    let stopReveal = (): void => {};
+    container.appendChild(root);
+    // Arriving to sign up: straight to the form. The cards are built
+    // below, and exist by the time the frame is painted.
+    if (intent === 'register') {
+      requestAnimationFrame(() => {
+        root.querySelector('.pg-cards')?.scrollIntoView({ block: 'start' });
+      });
+    }
+
+    const finish = (result: LandingResult): void => {
+      stopReveal();
+      stopEmbers();
+      stopBackdrop();
+      root.remove();
+      resolve(result);
+    };
+
+    // --- the bar: the same one the home wears, with the little it needs ---
+    const toPlay = el('button', '', 'Play');
+    toPlay.type = 'button';
+    toPlay.addEventListener('click', () => {
+      root.querySelector('.pg-cards')?.scrollIntoView({ behavior: 'smooth' });
+    });
+    bar.links.appendChild(toPlay);
+    // The other verb. "Source" on the right names a place and asks
+    // nothing; this one scrolls to the section that actually makes the
+    // case, because being open is the thing this game has that the genre
+    // does not and a five letter nav link was hiding it.
+    const toGive = el('button', '', 'Contribute');
+    toGive.type = 'button';
+    toGive.addEventListener('click', () => {
+      root.querySelector('.pg-give')?.scrollIntoView({ behavior: 'smooth' });
+    });
+    bar.links.appendChild(toGive);
+    bar.right.appendChild(navLink('Discord', DISCORD));
+    // The repository, as the one gold thing in the bar (ui/repo_link.ts).
+    bar.right.appendChild(buildRepoLink('pill', 'GitHub'));
+    // Last, and quiet, but on the page a first-time visitor actually
+    // reads: a site that counts anything owes them somewhere to look.
+    bar.right.appendChild(navLink('Privacy', PRIVACY));
+
+    // --- hero: the lockup, and the copy beside it ---
+    // The name is art here rather than text: the lockup carries the crest
+    // over the wordmark, so the bar needs no crest of its own. Still an h1,
+    // because the page's heading is the game's name either way.
+    const logo = el('img', '');
+    logo.src = '/logo.webp';
+    logo.alt = 'Claude of Legends';
+    logo.width = 960;
+    logo.height = 1181;
+    logo.decoding = 'async';
+    // The one image above the fold, and the largest thing on the page.
+    logo.fetchPriority = 'high';
+    const title = el('h1', 'pg-lockup');
+    title.appendChild(logo);
+
+    const copy = el('div', 'pg-hero-copy');
+    copy.appendChild(
+      el(
+        'p',
+        'pg-tag',
+        'A 5v5 MOBA that runs in a browser tab. Three lanes, ten champions, ' +
+          'jungle camps and fog of war. Nothing to install.',
+      ),
+    );
+    // Under the tagline: the repository, big, and the count beside it.
+    // The genre hands you a game; this one hands you the source, and the
+    // front door says so before it asks for anything.
+    const cta = el('div', 'pg-hero-cta');
+    const stats = el('div', 'pg-stats');
+    cta.append(buildRepoLink('hero', 'Star on GitHub'), stats);
+    copy.appendChild(cta);
+    mountLiveStats(stats);
+    hero.append(title, copy);
+
+    // --- the two ways in ---
+    const ways = el('div', 'pg-cards');
+
+    // One card, not a row of three under a heading counting them. The
+    // heading had to say "all three" because the reader could not see
+    // what the group was until they had counted it themselves, and an
+    // account read as the price of the ladder rather than the way in.
+    // So: the card is the account, the paintings inside it are what the
+    // account opens, and nothing explains what a bot or a forge is. The
+    // paintings do that, and the page is not a manual.
+    const online = el('section', 'pg-card gold');
+    online.append(
+      el('h2', '', 'Create a free account'),
+      el('p', '', 'It keeps your rating and your record, and opens these.'),
+    );
+    // The three the home stands at full height, wearing the paintings the
+    // home gives them, standing beside the form rather than under it:
+    // what an account opens, next to the thing that opens it.
+    const opens = el('div', 'pg-opens');
+    for (const mode of LANDING_MODES) {
+      const art = el('img', '');
+      art.src = mode.art;
+      // The title says which mode this is, so the painting is decoration.
+      art.alt = '';
+      art.loading = 'lazy';
+      art.decoding = 'async';
+      const body = el('div', 'pg-mode-body');
+      body.append(el('h3', '', mode.title), el('p', '', mode.call));
+      const item = el('article', 'pg-mode');
+      item.append(art, body);
+      opens.appendChild(item);
+    }
+    const formPanel = el('div', 'pg-opens-form');
+    formPanel.appendChild(
+      buildAuthForm(
+        (account) => finish({ kind: 'account', account }),
+        discordResult,
+        intent === 'register' ? 'register' : 'login',
+      ),
+    );
+    const openRow = el('div', 'pg-open-row');
+    openRow.append(formPanel, opens);
+    online.appendChild(openRow);
+
+    // The other way in, and the only one that needs nothing: the public
+    // queue as a Guest (ADR 0024), with the offline match one quiet line
+    // under it. It says what it is in one line: a visitor who has read the
+    // title of the page knows what a 5v5 is. It no longer brags about the whole
+    // roster being open in it, because it is not: the practice match draws
+    // the same wall as the rest of the game and a visitor picks from what
+    // a fresh account holds (ADR 0018).
+    const offline = el('section', 'pg-card plain glow');
+    const playBtn = el('button', 'menu-btn pg-play', PLAY_NOW_CALL);
+    playBtn.addEventListener('click', () => finish({ kind: 'guest' }));
+    // Someone playing right now, over the button (ui/landing_presence.ts).
+    const presence = el('div', 'pg-presence');
+    presence.append(el('i', ''), el('span', ''));
+    mountPresence(presence);
+    const aloneBtn = el('button', 'pg-alone', PRACTICE_ALONE_CALL);
+    aloneBtn.type = 'button';
+    aloneBtn.addEventListener('click', () => finish({ kind: 'offline' }));
+    // The painting this card was missing. The heading above it says what
+    // it is, so the picture is decoration and carries no label of its own.
+    const tryArt = el('img', '');
+    tryArt.src = PRACTICE_ART;
+    tryArt.alt = '';
+    tryArt.loading = 'lazy';
+    tryArt.decoding = 'async';
+    const tryShot = el('div', 'pg-try');
+    tryShot.appendChild(tryArt);
+    offline.append(
+      // "Or try it first" while it stood second; stacked it stands first
+      // now, and a heading that begins with "Or" has nothing to follow.
+      el('h2', '', 'Play now'),
+      el('p', '', PLAY_NOW_LINE),
+      tryShot,
+      el('p', 'pg-card-fine', PLAY_NOW_FINE),
+      presence,
+      playBtn,
+      aloneBtn,
+    );
+    // The newest news in one line (CONTEXT.md: News): a site whose last
+    // word is from yesterday reads inhabited before anything is clicked.
+    // It opens the section over the landing, with the nav told, so Back
+    // closes it the way it closes a drawer.
+    const now = Date.now();
+    const latest = newestOf(allNews(), now);
+    if (latest) {
+      const line = el('button', 'pg-news');
+      line.type = 'button';
+      if (latest.image) {
+        const thumb = el('img', '');
+        thumb.src = newsImageUrl(latest.image) ?? '';
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+        thumb.decoding = 'async';
+        line.appendChild(thumb);
+      }
+      const words = el('span', 'pg-news-words');
+      const when =
+        latest.at !== undefined && isPinned(latest, now)
+          ? countdownText(latest.at, now)
+          : dayText(latest.day);
+      words.append(el('small', '', when), el('b', '', latest.title));
+      line.appendChild(words);
+      line.addEventListener('click', () => {
+        const host = el('div', 'pg-news-host');
+        root.appendChild(host);
+        const stop = openNews(host, {
+          onLink: () => {
+            remove();
+            frame.closed();
+            root.querySelector('.pg-cards')?.scrollIntoView({ behavior: 'smooth' });
+          },
+          onClosed: () => {
+            host.remove();
+            frame.closed();
+          },
+        });
+        const remove = (): void => {
+          stop();
+          host.remove();
+        };
+        const frame = appNav().push('news', remove);
+      });
+      offline.appendChild(line);
+    }
+
+    ways.append(online, offline);
+    inner.appendChild(ways);
+
+    // The ladder, to a visitor (ui/landing_ladder.ts): the names already
+    // standing there, under the two doors and before the page asks for
+    // theirs. Its button is the way to the form.
+    const ladder = el('section', 'pg-ladder');
+    inner.appendChild(ladder);
+    mountLandingLadder(ladder, () => {
+      root.querySelector('.pg-cards')?.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // --- and the thing the genre does not offer ---
+    const give = el('section', 'pg-give');
+    give.append(
+      el('h2', '', CONTRIBUTE_TITLE),
+      el('p', '', CONTRIBUTE_LEAD),
+      buildRepoLink('wide', 'Open the repository'),
+    );
+    const giveRow = el('div', 'pg-give-row');
+    for (const way of CONTRIBUTE_WAYS) {
+      const card = el('article', 'pg-give-way');
+      const link = el('a', '', way.cta) as HTMLAnchorElement;
+      link.href = way.href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      card.append(el('h3', '', way.title), el('p', '', way.line), link);
+      giveRow.appendChild(card);
+    }
+    give.appendChild(giveRow);
+    inner.appendChild(give);
+    // A screen down, so it arrives when scrolled to rather than unseen.
+    stopReveal = revealOnScroll(root, [give]);
+  });
+}

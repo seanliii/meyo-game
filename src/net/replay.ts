@@ -1,0 +1,273 @@
+// Deterministic match replays. The sim is a pure function of (seed, picks,
+// command stream), so a full match compresses to kilobytes: the server
+// records while the match runs, the browser rebuilds the same sim and
+// feeds the same commands at the same ticks. server/match.ts builds its
+// live sim and applies live commands THROUGH these functions, so the live
+// path and the replay path cannot drift apart.
+
+import { parseCoachOrder } from '../sim/coach';
+import { attachBot, botPolicy } from '../sim/content/bots';
+import { contentMatches } from '../sim/content/fingerprint';
+import type { StarOrchard } from '../sim/content/star_orchard';
+import type { ForgedChampionDef } from '../sim/forge/forged_def';
+import type { PlaybookDef } from '../sim/playbook/types';
+import { Sim } from '../sim/sim';
+import { TerrainNavGrid } from '../sim/terrain_nav';
+import type { TeamId } from '../sim/types';
+import { type ClientMsg, isFiniteVec } from './protocol';
+
+// Bumped whenever the sim's own CODE changes behavior (a replay is a
+// re-simulation, so an older record would silently play out a different
+// match): 2 with the river-reflected lane polylines, 3 with exactly
+// rounded lengths and angles (ADR 0019), 4 with the Star Orchard as the
+// map (ADR 0021: every earlier record is the launch map's, and the ones
+// from before the fingerprint existed carry none to be refused by). What
+// the sim READS rather than what it does (champions, items, sigils, the
+// map, the house bots) is guarded by the content fingerprint instead,
+// which moves on its own (src/sim/content/fingerprint.ts): nobody has to
+// remember that one.
+// 5: the rings' creatures and the favors (docs/plan-rings.md), and the
+// Warden at 12:00; a record from before them plays a match nobody played.
+// 6: the bodies grown for a team, the Ascendant and the Wrath (the rings'
+// round two): the execute in the damage pipeline and the bite on every
+// neutral strike are sim rules, not content.
+// 7: the forest round (ADR 0023): the rings' creatures in the fog, the
+// Warden's pit drawn from the rng, camps of three kinds with their memory
+// in the observation, the Jungler on every house team's fifth seat.
+export const REPLAY_VERSION = 7;
+
+// The checksum a replay must show at `tick`, or null when the record
+// says nothing about that tick (an older record, or a tick that is not
+// on the check cadence).
+export function expectedCheck(record: ReplayRecord, tick: number): number | null {
+  if (!record.checks || tick <= 0 || tick % CHECK_TICKS !== 0) return null;
+  return record.checks[tick / CHECK_TICKS - 1] ?? null;
+}
+
+// Whether a record still plays out the match it recorded: the version
+// this build speaks, and content (the map included) that has not moved
+// under it.
+export function replayPlayable(
+  record: { version?: unknown; content?: string | undefined },
+  orchard: StarOrchard,
+): boolean {
+  return record.version === REPLAY_VERSION && contentMatches(record.content, orchard);
+}
+// A griefer spamming the rate limit for a whole match could balloon the
+// log; past this the match simply has no replay.
+export const REPLAY_EVENT_CAP = 200_000;
+
+export interface ReplayPick {
+  name: string;
+  team: TeamId;
+  championId: string;
+  sigils: [string, string];
+  skin?: number;
+  // Bot policy id; seats without it are humans driven by recorded events.
+  bot?: string;
+  // An account's own bot (ADR 0013): the playbook that played, embedded
+  // whole like a forged definition, so the replay runs what ran.
+  playbook?: PlaybookDef;
+}
+
+export interface ReplayEvent {
+  // sim.tickCount at the moment the event applied live: replays apply it
+  // at the same boundary, before the next tick runs.
+  k: number;
+  // The unit the event concerns.
+  u: number;
+  // cmd: a player command. bot_on and bot_off: a disconnect handing the
+  // seat to the default bot, and a rejoin taking it back. Both change
+  // how the sim evolves, so both must replay.
+  e: 'cmd' | 'bot_on' | 'bot_off';
+  c?: ClientMsg;
+}
+
+// How often a match writes down where it stood. Every ten seconds of
+// play: a hundred and twenty numbers on a twenty-minute match, about a
+// kilobyte, against the five megabytes a recorded match would weigh
+// (measured 2026-09-07: the wire snapshot at 20 Hz, gzipped). It buys
+// the one thing re-simulation cannot give itself, which is knowing when
+// it has gone wrong.
+export const CHECK_TICKS = 200;
+
+export interface ReplayRecord {
+  version: number;
+  // The fingerprint of the content the match ran on (champions, items,
+  // sigils, the map, the house bots, the tick rate). A replay is a
+  // re-simulation, so a record whose content has moved since would play
+  // out a DIFFERENT match; the viewer refuses it instead. Absent on
+  // records written before the fingerprint existed.
+  content?: string;
+  seed: number;
+  picks: ReplayPick[];
+  events: ReplayEvent[];
+  // Total ticks the live match ran to its winner.
+  ticks: number;
+  // Where the match stood every CHECK_TICKS ticks, as the sim's own
+  // checksum. A replay compares as it plays: the first number that
+  // differs is the moment it stopped being the match it claims to be,
+  // and it stops there rather than showing a match nobody played.
+  // Absent on records written before this existed.
+  checks?: number[];
+  // The match's forged champion definitions, embedded whole (ADR 0010): a
+  // forged id means nothing outside its match, so the replay carries the
+  // data, not the reference. Absent for roster-only matches.
+  forged?: ForgedChampionDef[];
+}
+
+// A bare Sim on the Star Orchard: a fresh walkability grid over the shared
+// export, strict navigation. buildMatchSim seats a match on it; the
+// practice match (src/main.ts) and the dev showcase seat their own.
+export function orchardSim(orchard: StarOrchard, seed: number): Sim {
+  return new Sim(seed, {
+    map: orchard.map,
+    nav: new TerrainNavGrid(orchard.navigation),
+    strictNavigation: true,
+  });
+}
+
+// The one sim construction for a match, live and replayed alike, on the
+// Star Orchard the host has read (ADR 0021): a fresh walkability grid over
+// the shared export, strict navigation, then the same seed, the same forged
+// definitions in the same order, the same picks in the same order, the same
+// policy attachments. Nothing else in the game constructs a match's Sim
+// (tests/architecture.test.ts).
+export function buildMatchSim(
+  orchard: StarOrchard,
+  seed: number,
+  picks: readonly ReplayPick[],
+  forged: readonly ForgedChampionDef[] = [],
+): { sim: Sim; unitIds: number[] } {
+  const sim = orchardSim(orchard, seed);
+  for (const def of forged) sim.addForgedChampion(def);
+  const unitIds: number[] = [];
+  for (const p of picks) {
+    const unit = sim.addChampion(p.team, undefined, p.championId, p.skin ?? 0);
+    unit.sigils = [...p.sigils];
+    unitIds.push(unit.id);
+    if (p.playbook) sim.attachPlaybook(unit.id, p.playbook);
+    else if (p.bot) attachBot(sim, unit.id, p.bot);
+  }
+  return { sim, unitIds };
+}
+
+const ABILITY_KEYS = new Set(['Q', 'W', 'E', 'R']);
+
+// The one validated command application path, live and replayed alike.
+// Validation is deterministic given identical sim state, so recording the
+// raw message is enough: an invalid command no-ops identically both times.
+export function applySimCommand(sim: Sim, team: TeamId, unitId: number, msg: ClientMsg): void {
+  switch (msg.t) {
+    case 'move':
+      if (isFiniteVec(msg.x, msg.z)) sim.orderMove(unitId, msg.x, msg.z);
+      break;
+    case 'attack':
+      if (typeof msg.targetId === 'number' && sim.isVisible(team, msg.targetId)) {
+        sim.orderAttack(unitId, msg.targetId);
+      }
+      break;
+    case 'attack_move':
+      if (isFiniteVec(msg.x, msg.z)) sim.orderAttackMove(unitId, msg.x, msg.z);
+      break;
+    case 'stop':
+      sim.orderStop(unitId);
+      break;
+    case 'sell':
+      if (typeof msg.slot === 'number') sim.sellItem(unitId, msg.slot);
+      break;
+    case 'recall':
+      sim.startRecall(unitId);
+      break;
+    case 'cast':
+      if (typeof msg.key === 'string' && ABILITY_KEYS.has(msg.key) && isFiniteVec(msg.x, msg.z)) {
+        sim.castAbility(unitId, msg.key, { x: msg.x, z: msg.z });
+      }
+      break;
+    case 'sigil':
+      if ((msg.slot === 0 || msg.slot === 1) && isFiniteVec(msg.x, msg.z)) {
+        sim.castSigil(unitId, msg.slot, { x: msg.x, z: msg.z });
+      }
+      break;
+    case 'buy':
+      if (typeof msg.itemId === 'string') sim.buyItem(unitId, msg.itemId);
+      break;
+    case 'skill':
+      if (msg.key === 'Q' || msg.key === 'W' || msg.key === 'E' || msg.key === 'R') {
+        sim.levelAbility(unitId, msg.key);
+      }
+      break;
+    case 'order': {
+      const u = sim.units.get(unitId);
+      if (!u) break;
+      const order = parseCoachOrder(msg, u.pos);
+      if (order === undefined) break;
+      // Fogged like an attack: a focus names only what the team sees.
+      if (order?.kind === 'focus' && !sim.isVisible(team, order.targetId)) break;
+      sim.setCoachOrder(unitId, order);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// Feed one recorded event into a replaying sim. unitTeams maps unitId to
+// team (from the picks), needed by the attack visibility check.
+export function applyReplayEvent(
+  sim: Sim,
+  unitTeams: ReadonlyMap<number, TeamId>,
+  ev: ReplayEvent,
+): void {
+  if (ev.e === 'cmd') {
+    const team = unitTeams.get(ev.u);
+    if (team !== undefined && ev.c) applySimCommand(sim, team, ev.u, ev.c);
+    return;
+  }
+  if (ev.e === 'bot_on') {
+    attachBot(sim, ev.u, undefined);
+    return;
+  }
+  sim.detachPolicy(ev.u);
+}
+
+// The policies a replaying sim holds at a tick, put back after a checkpoint
+// restore. A checkpoint carries every container but this one
+// (src/sim/snapshot.ts): policies are functions, and in a match nobody
+// leaves they never change. A live match's seats do change hands (bot_on,
+// bot_off), so a restore across one of those events would leave the wrong
+// seats driven: a bot never attached in this sim, or a bot still attached
+// from a later tick, fighting the recorded commands for the seat. The map
+// is rebuilt with the same operations in the same order live attachment
+// made them (the seats in pick order, then every event before the tick),
+// so the seats decide in the same order too and draw from the rng alike.
+// A checkpoint at `tick` was taken with the events before it applied and
+// the ones at it still pending, which is where the event cursor lands too.
+export function restorePolicies(
+  sim: Sim,
+  picks: readonly ReplayPick[],
+  unitIds: readonly number[],
+  events: readonly ReplayEvent[],
+  tick: number,
+): void {
+  sim.policies.clear();
+  picks.forEach((p, i) => {
+    const unitId = unitIds[i];
+    if (unitId === undefined) return;
+    const policy = p.playbook
+      ? sim.policyForPlaybook(p.playbook)
+      : p.bot !== undefined
+        ? botPolicy(sim, p.bot)
+        : null;
+    if (policy) sim.attachPolicy(unitId, policy);
+  });
+  for (const ev of events) {
+    if (ev.k >= tick) break;
+    if (ev.e === 'bot_on') {
+      const policy = botPolicy(sim, undefined);
+      if (policy) sim.attachPolicy(ev.u, policy);
+    } else if (ev.e === 'bot_off') {
+      sim.policies.delete(ev.u);
+    }
+  }
+}

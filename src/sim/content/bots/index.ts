@@ -1,0 +1,37 @@
+// The bot registry: scripted or playbook Policies merged into one table
+// (ADR 0002, ADR 0013). One file per bot; new bots are a first-class
+// community contribution. Today every registered bot is a house style
+// (house.ts); a bot that is not one is appended here, not there.
+
+import type { Policy } from '../../policy';
+import type { Sim } from '../../sim';
+import { HOUSE_STYLES } from './house';
+import { type BotDef, LANER } from './laner';
+
+export type { BotDef } from './laner';
+
+const ALL: readonly BotDef[] = [...HOUSE_STYLES];
+
+export const BOTS: Readonly<Record<string, BotDef>> = Object.fromEntries(ALL.map((b) => [b.id, b]));
+
+export const DEFAULT_BOT_ID = LANER.id;
+
+// Seat a bot on a champion: the one attachment path for every host (the
+// server match, the replay, the environment, the offline practice). An
+// unknown or absent id falls back to the default bot. A playbook bot goes
+// through attachPlaybook so its active play is traced (ADR 0013).
+export function attachBot(sim: Sim, unitId: number, botId: string | undefined): void {
+  const def = (botId !== undefined ? BOTS[botId] : undefined) ?? BOTS[DEFAULT_BOT_ID];
+  if (!def) return;
+  if (def.playbook) sim.attachPlaybook(unitId, def.playbook);
+  else sim.attachPolicy(unitId, def.policy);
+}
+
+// The bot's Policy alone, with the same fallback, and none of the seating
+// attachBot does: what a replay puts back on a seat after a checkpoint
+// restore (src/net/replay.ts, restorePolicies).
+export function botPolicy(sim: Sim, botId: string | undefined): Policy | null {
+  const def = (botId !== undefined ? BOTS[botId] : undefined) ?? BOTS[DEFAULT_BOT_ID];
+  if (!def) return null;
+  return def.playbook ? sim.policyForPlaybook(def.playbook) : def.policy;
+}

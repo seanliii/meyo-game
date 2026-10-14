@@ -1,0 +1,62 @@
+services:
+  game:
+    build: .
+    image: claude-of-legends:standalone
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8787}:8787"
+    environment:
+      PORT: "8787"
+      HOST: "0.0.0.0"
+      DATA_DIR: /app/data
+      PUBLIC_URL: "${PUBLIC_URL:-http://localhost:8787}"
+      TRUST_PROXY: "${TRUST_PROXY:-0}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-}"
+      MAIL_API_KEY: "${MAIL_API_KEY:-}"
+      MAIL_FROM: "${MAIL_FROM:-}"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      DISCORD_GUILD_ID: "${DISCORD_GUILD_ID:-}"
+      TRIPO_API_KEY: "${TRIPO_API_KEY:-}"
+      TRIPO_IMAGE_MODEL: "${TRIPO_IMAGE_MODEL:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_IMAGE_MODEL: "${OPENAI_IMAGE_MODEL:-}"
+      OPENAI_IMAGE_SIZE: "${OPENAI_IMAGE_SIZE:-}"
+      OPENAI_IMAGE_QUALITY: "${OPENAI_IMAGE_QUALITY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      BOT_COACH_MODEL: "${BOT_COACH_MODEL:-}"
+      SUGGEST_MODEL: "${SUGGEST_MODEL:-}"
+      EMBERS_PER_WEEK: "${EMBERS_PER_WEEK:-}"
+      FORGE_DRAFT_CAP: "${FORGE_DRAFT_CAP:-}"
+      REPORT_TAKEDOWN_THRESHOLD: "${REPORT_TAKEDOWN_THRESHOLD:-}"
+      SERVER_GENERATIONS_PER_DAY: "${SERVER_GENERATIONS_PER_DAY:-}"
+      SERVER_ANIMATIONS_PER_DAY: "${SERVER_ANIMATIONS_PER_DAY:-}"
+      SERVER_2D_PER_DAY: "${SERVER_2D_PER_DAY:-}"
+      SERVER_AGENT_PER_DAY: "${SERVER_AGENT_PER_DAY:-}"
+      API_RATE_PER_MIN: "${API_RATE_PER_MIN:-}"
+      ART_HISTORY_CAP: "${ART_HISTORY_CAP:-}"
+      ASSET_MAX_IMAGE_KB: "${ASSET_MAX_IMAGE_KB:-}"
+      ASSET_MAX_MODEL_KB: "${ASSET_MAX_MODEL_KB:-}"
+      BOT_CAP: "${BOT_CAP:-}"
+      BOT_DEPOSIT_CAP: "${BOT_DEPOSIT_CAP:-}"
+      COACH_IDLE_DAYS: "${COACH_IDLE_DAYS:-}"
+      ARENA_ROUND_MINUTES: "${ARENA_ROUND_MINUTES:-}"
+      ARENA_PLAY_NOW_PER_DAY: "${ARENA_PLAY_NOW_PER_DAY:-}"
+      SPARRING_PER_SIDE: "${SPARRING_PER_SIDE:-}"
+      STATS_WEBSITE_ID: "${STATS_WEBSITE_ID:-}"
+    volumes:
+      - game_data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/healthz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  game_data:
