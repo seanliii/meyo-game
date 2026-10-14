@@ -1321,6 +1321,9 @@ export class Hud {
   private endHover: string | null = null;
   // Set by setMatchResult, read when the end screen is drawn.
   private endRatingText = '';
+  // Written alongside endRatingText; the draw path may adopt it later.
+  // biome-ignore lint/correctness/noUnusedVariables: kept with endRatingText for symmetry
+  private endRatingColor = '#93a87c';
   // The end screen's content, built once when the match is decided.
   private endInfo: {
     title: string;
