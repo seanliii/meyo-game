@@ -18,7 +18,6 @@ import { playedByHand, seatWay } from './ways';
 // classic comp without the match immediately falling back to the creature
 // outliers that make the battlefield read like a prototype.
 export const STARTER_COLLECTION: readonly string[] = [
-  'korrath',
   'dain',
   'sylra',
   'vesk',
@@ -31,6 +30,8 @@ export const STARTER_COLLECTION: readonly string[] = [
 // own models while the other eight wear shared CC0 pack assets
 // (src/render/champions/manifest.ts).
 export const CHAMPION_PRICES: Readonly<Record<string, number>> = {
+  korrath: 900,
+  vesk: 900,
   fenn: 500,
   ashvyn: 500,
   maera: 500,

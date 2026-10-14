@@ -19,7 +19,7 @@ export const SKINS: Readonly<Record<string, readonly SkinDef[]>> = {
     { name: 'Dawnplate', body: 0xc9a84a, accent: 0xf0e3b0 },
   ],
   dain: [
-    { name: 'Default', body: 0x665445, accent: 0xd4b27a },
+    { name: 'Default', body: null, accent: 0xd4b27a },
     { name: 'Coldsnap', body: 0x3a5a78, accent: 0xa8d8f0 },
     { name: 'Ashen Ring', body: 0x4a4442, accent: 0xd6d0c8 },
   ],

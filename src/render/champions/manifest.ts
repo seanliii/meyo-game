@@ -410,7 +410,9 @@ export const CHAMPION_VISUALS: Readonly<Record<string, ChampionVisualDef>> = {
     authoredTiming: { attackRelease: 0.44 },
     portrait: { clip: 'attack', time: 0.5, yaw: 0.5, zoom: 0.88 },
     runSpeed: 4.6,
-    hide: ['Warrior_Sword'],
+    // The re-exported Warrior.glb names the sword blade mesh Cylinder.001
+    // (it carries Warrior_Sword_Texture); the old name no longer exists.
+    hide: ['Cylinder.001'],
     toon: {
       mapLift: 0.015,
       valueMul: 1.05,
@@ -624,7 +626,6 @@ export const CHAMPION_VISUALS: Readonly<Record<string, ChampionVisualDef>> = {
     authoredTiming: { attackRelease: 0.52 },
     runSpeed: 4.38,
     portrait: { clip: 'attack', time: 0.55, yaw: 0.62, zoom: 0.9 },
-    teamMeshes: ['Cloak'],
     recolor: { Bow_Texture: 0xc9d7ea },
     tint: 0x8a95b3,
     toon: {
