@@ -1,12 +1,15 @@
 // cc_hero_hud_finish_v5 capture: real browser, real inputs, hero-on-screen
 // verified through READ-ONLY state before every shot. No state writes.
-import puppeteer from 'puppeteer-core';
-import { mkdirSync, writeFileSync } from 'node:fs';
 
-const CHROME = process.env.CHROME ??
+import { mkdirSync, writeFileSync } from 'node:fs';
+import puppeteer from 'puppeteer-core';
+
+const CHROME =
+  process.env.CHROME ??
   '/docker/opt/customdata/meyo-runtime/p75097875-9ea2bb05cf60f71e/runtime/browser/chrome-linux64/chrome';
 const URL = process.env.URL ?? 'http://127.0.0.1:8801';
-const OUT = process.env.OUT ??
+const OUT =
+  process.env.OUT ??
   '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_hud_v5';
 const TMPDIR = '/dev/shm/hero-hud-v5';
 const PROFILE = '/dev/shm/hero-hud-v5-profile';
@@ -46,19 +49,23 @@ async function clickButton(page, text) {
 async function heroScreen(page) {
   return page.evaluate(() => {
     const m = window.__match;
-    if (!m || !m.world || !m.renderer) return null;
+    if (!m?.world || !m.renderer) return null;
     const u = m.world.units.get(m.selfId);
     if (!u) return null;
     const bar = m.renderer.projectToScreen(u.pos.x, 2.5, u.pos.z);
     const feet = m.renderer.projectToScreen(u.pos.x, 0.2, u.pos.z);
     if (!bar || !feet) return { onScreen: false };
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const inside = (p, m0) =>
-      p.x > m0 && p.x < vw - m0 && p.y > 90 && p.y < vh - 160;
+    const vw = window.innerWidth,
+      vh = window.innerHeight;
+    const inside = (p, m0) => p.x > m0 && p.x < vw - m0 && p.y > 90 && p.y < vh - 160;
     return {
       onScreen: inside(bar, 120) && inside(feet, 80),
-      bar, feet, pos: { x: u.pos.x, z: u.pos.z },
-      hp: u.hp, level: u.level, gold: u.gold,
+      bar,
+      feet,
+      pos: { x: u.pos.x, z: u.pos.z },
+      hp: u.hp,
+      level: u.level,
+      gold: u.gold,
       championId: u.championId,
     };
   });
@@ -73,9 +80,14 @@ const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
   args: [
-    '--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader',
-    '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
-    `--user-data-dir=${PROFILE}`, '--window-size=1440,960', '--mute-audio',
+    '--no-sandbox',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
+    `--user-data-dir=${PROFILE}`,
+    '--window-size=1440,960',
+    '--mute-audio',
   ],
   defaultViewport: { width: 1440, height: 960 },
 });
@@ -84,27 +96,37 @@ const page = await browser.newPage();
 const problems = [];
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => {
-  if (m.type() === 'error' && !/\b401\b/.test(m.text())) problems.push(`[console.error] ${m.text()}`);
+  if (m.type() === 'error' && !/\b401\b/.test(m.text()))
+    problems.push(`[console.error] ${m.text()}`);
 });
 
 await page.goto(URL, { waitUntil: 'load', timeout: 45000 });
-await waitFor(page,
+await waitFor(
+  page,
   `[...document.querySelectorAll('button')].some((e) => (e.textContent || '').toLowerCase().includes('practice alone against bots'))`,
-  'home actions');
+  'home actions',
+);
 await clickButton(page, 'practice alone against bots');
-await waitFor(page,
+await waitFor(
+  page,
   `[...document.querySelectorAll('button')].some((e) => (e.textContent || '').includes('Lock in'))`,
-  'champion select');
+  'champion select',
+);
 await clickButton(page, 'Korrath, the Bulwark');
 await sleep(400);
 await clickButton(page, 'Lock in');
 console.log('locked in, waiting for match load');
 
 // Wait until in-match with the player rig up (read-only).
-await waitFor(page, () => {
-  const m = window.__match;
-  return !!(m && m.world && m.world.units && m.world.units.get(m.selfId));
-}, 'player unit exists', 60000);
+await waitFor(
+  page,
+  () => {
+    const m = window.__match;
+    return !!m?.world?.units?.get(m.selfId);
+  },
+  'player unit exists',
+  60000,
+);
 // Wait for the champion rig: the GLB template must have loaded (figure vs
 // rig is renderer-internal; we wait for the model-wait gate instead).
 await sleep(12000);
@@ -116,7 +138,7 @@ await sleep(600);
 
 const hero = await heroScreen(page);
 console.log('hero probe:', JSON.stringify(hero));
-if (!hero || !hero.onScreen) {
+if (!hero?.onScreen) {
   console.error('HERO NOT ON SCREEN — aborting shots that need the hero');
 }
 
@@ -133,7 +155,7 @@ if (hudBottom) {
 }
 
 // ---- Real input: move down-lane with a real right-click ----
-const moveTarget = await page.evaluate(() => {
+const _moveTarget = await page.evaluate(() => {
   const m = window.__match;
   const u = m.world.units.get(m.selfId);
   // toward mid-lane enemy side: map coords, read-only
@@ -163,7 +185,7 @@ for (let i = 0; i < 14; i++) {
 await sleep(1200);
 const hero3 = await heroScreen(page);
 console.log('hero closeup probe:', JSON.stringify(hero3));
-if (hero3 && hero3.onScreen) {
+if (hero3?.onScreen) {
   await shot(page, `${OUT}/v5_hero_closeup_20261010.png`);
 } else {
   console.error('hero NOT on screen for closeup; saving diagnostic frame instead');
@@ -182,10 +204,12 @@ await sleep(900);
 await clickButton(page, 'Guard Plate');
 await sleep(500);
 const buyBtn = await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button')].find((e) =>
-    (e.textContent || '').trim().toLowerCase() === 'buy');
+  const b = [...document.querySelectorAll('button')].find(
+    (e) => (e.textContent || '').trim().toLowerCase() === 'buy',
+  );
   if (!b) return false;
-  b.click(); return true;
+  b.click();
+  return true;
 });
 console.log('buy clicked:', buyBtn);
 await sleep(700);
@@ -218,8 +242,11 @@ const state = await page.evaluate(() => {
   const u = m.world.units.get(m.selfId);
   return {
     pos: { x: +u.pos.x.toFixed(1), z: +u.pos.z.toFixed(1) },
-    level: u.level, gold: Math.floor(u.gold), items: u.items,
-    abilityRanks: u.abilityRanks, hp: Math.floor(u.hp),
+    level: u.level,
+    gold: Math.floor(u.gold),
+    items: u.items,
+    abilityRanks: u.abilityRanks,
+    hp: Math.floor(u.hp),
     minionsNear: [...m.world.units.values()].filter(
       (x) => x.kind === 'minion' && Math.hypot(x.pos.x - u.pos.x, x.pos.z - u.pos.z) < 30,
     ).length,

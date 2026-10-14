@@ -9,25 +9,23 @@ export interface MatchAutomationSnapshot {
   readonly time: number;
   readonly winner: TeamId | null;
   readonly shopOpen: boolean;
-  readonly self:
-    | {
-        readonly id: number;
-        readonly championId?: string;
-        readonly dead: boolean;
-        readonly pos: { readonly x: number; readonly z: number };
-        readonly hp: number;
-        readonly maxHp: number;
-        readonly mana: number;
-        readonly maxMana: number;
-        readonly gold: number;
-        readonly level: number;
-        readonly skillPoints: number;
-        readonly items: readonly string[];
-        readonly abilityRanks: Readonly<Record<string, number>>;
-        readonly cooldowns: Readonly<Record<string, number>>;
-        readonly attackTargetId: number | null;
-      }
-    | null;
+  readonly self: {
+    readonly id: number;
+    readonly championId?: string;
+    readonly dead: boolean;
+    readonly pos: { readonly x: number; readonly z: number };
+    readonly hp: number;
+    readonly maxHp: number;
+    readonly mana: number;
+    readonly maxMana: number;
+    readonly gold: number;
+    readonly level: number;
+    readonly skillPoints: number;
+    readonly items: readonly string[];
+    readonly abilityRanks: Readonly<Record<string, number>>;
+    readonly cooldowns: Readonly<Record<string, number>>;
+    readonly attackTargetId: number | null;
+  } | null;
 }
 
 export interface MatchAutomationResult {

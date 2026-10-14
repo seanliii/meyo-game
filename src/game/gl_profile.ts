@@ -13,7 +13,8 @@ export interface GlProfile {
 
 let cached: GlProfile | null = null;
 
-const SOFTWARE_MARKERS = /swiftshader|llvmpipe|softpipe|software renderer|basic render driver|microsoft basic/i;
+const SOFTWARE_MARKERS =
+  /swiftshader|llvmpipe|softpipe|software renderer|basic render driver|microsoft basic/i;
 
 export function glProfile(): GlProfile {
   if (cached) return cached;

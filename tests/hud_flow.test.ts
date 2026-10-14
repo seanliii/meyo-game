@@ -4,8 +4,8 @@ import {
   defaultShopSelection,
   escapeHotkeyAction,
   shopHotkeyAction,
-  syncBlockingStateForWinner,
   shouldPromptOpeningShop,
+  syncBlockingStateForWinner,
 } from '../src/ui/hud';
 
 describe('hud hotkey routing', () => {
@@ -70,10 +70,7 @@ describe('reserved hotkeys on the end screen', () => {
 describe('end overlay blocking state', () => {
   it('drops shop and escape before opening the result overlay', () => {
     expect(
-      syncBlockingStateForWinner(
-        { shopOpen: true, escapeOpen: true, endOpen: false },
-        1,
-      ),
+      syncBlockingStateForWinner({ shopOpen: true, escapeOpen: true, endOpen: false }, 1),
     ).toEqual({
       shopOpen: false,
       escapeOpen: false,

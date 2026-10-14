@@ -813,13 +813,7 @@ function attachAtFirstBone(
   }
 }
 
-export const SILHOUETTE_KIT_CHAMPIONS = [
-  'korrath',
-  'dain',
-  'ashvyn',
-  'maera',
-  'sylra',
-] as const;
+export const SILHOUETTE_KIT_CHAMPIONS = ['korrath', 'dain', 'ashvyn', 'maera', 'sylra'] as const;
 
 function applySilhouetteKit(
   championId: string,
@@ -832,10 +826,10 @@ function applySilhouetteKit(
     return;
   }
   const dark = new THREE.Color(bodyTint).multiplyScalar(0.38).getHex();
-  const darkMat = silhouetteMat(dark);
-  const accentMat = silhouetteMat(accent, 0.18);
-  const familyMetal = silhouetteMat(0xc6af77, 0.12);
-  const bannerMat = silhouetteMat(
+  const _darkMat = silhouetteMat(dark);
+  const _accentMat = silhouetteMat(accent, 0.18);
+  const _familyMetal = silhouetteMat(0xc6af77, 0.12);
+  const _bannerMat = silhouetteMat(
     new THREE.Color(bodyTint).multiply(new THREE.Color(0x7d8794)).getHex(),
   );
   if (championId === 'korrath') {
@@ -1095,7 +1089,10 @@ function applySilhouetteKit(
     ] as const) {
       attachAtFirstBone(rig, side, () => {
         const g = new THREE.Group();
-        const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.076, gauntletLen, 10), dAccent);
+        const core = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.06, 0.076, gauntletLen, 10),
+          dAccent,
+        );
         core.rotation.z = Math.PI / 2;
         const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.082, 12, 10), dAccent);
         knuckle.scale.set(1.0, 0.26, 0.82);
@@ -1131,40 +1128,44 @@ function applySilhouetteKit(
       g.add(hood, crest, mask);
       return g;
     });
-    attachAtFirstBone(rig, ['Torso', 'Abdomen', 'Hips', 'chest', 'Spine02', 'Spine01', 'Spine'], () => {
-      const g = new THREE.Group();
-      const cape = new THREE.Mesh(drapeStrip(0.34, 0.9, 0.2), aCloth);
-      cape.position.set(0.18, -0.18, -0.22);
-      cape.rotation.x = 0.18;
-      cape.rotation.z = -0.24;
-      const mantle = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), aDark);
-      mantle.scale.set(1.2, 0.42, 0.94);
-      mantle.position.set(0.02, 0.06, -0.02);
-      const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.74, 12), aDark);
-      quiver.position.set(-0.28, -0.04, -0.26);
-      quiver.rotation.z = -0.22;
-      quiver.rotation.x = 0.24;
-      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.56, 8), aAccent);
-      strap.rotation.z = 0.58;
-      strap.position.set(0.12, -0.02, 0.12);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 14), aMetal);
-      band.rotation.x = Math.PI / 2;
-      band.position.set(0.02, -0.08, 0.14);
-      const crestBadge = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), aMetal);
-      crestBadge.scale.set(1.2, 0.9, 0.5);
-      crestBadge.position.set(0.02, 0.04, 0.15);
-      for (const y of [0.08, 0.2, 0.32]) {
-        const arrow = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.44, 6), aMetal);
-        arrow.position.set(-0.28, y, -0.24);
-        arrow.rotation.z = -0.1;
-        const head = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 4), aAccent);
-        head.position.set(-0.28, y + 0.24, -0.24);
-        head.rotation.z = Math.PI;
-        g.add(arrow, head);
-      }
-      g.add(cape, mantle, quiver, strap, band, crestBadge);
-      return g;
-    });
+    attachAtFirstBone(
+      rig,
+      ['Torso', 'Abdomen', 'Hips', 'chest', 'Spine02', 'Spine01', 'Spine'],
+      () => {
+        const g = new THREE.Group();
+        const cape = new THREE.Mesh(drapeStrip(0.34, 0.9, 0.2), aCloth);
+        cape.position.set(0.18, -0.18, -0.22);
+        cape.rotation.x = 0.18;
+        cape.rotation.z = -0.24;
+        const mantle = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), aDark);
+        mantle.scale.set(1.2, 0.42, 0.94);
+        mantle.position.set(0.02, 0.06, -0.02);
+        const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.74, 12), aDark);
+        quiver.position.set(-0.28, -0.04, -0.26);
+        quiver.rotation.z = -0.22;
+        quiver.rotation.x = 0.24;
+        const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.56, 8), aAccent);
+        strap.rotation.z = 0.58;
+        strap.position.set(0.12, -0.02, 0.12);
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 14), aMetal);
+        band.rotation.x = Math.PI / 2;
+        band.position.set(0.02, -0.08, 0.14);
+        const crestBadge = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), aMetal);
+        crestBadge.scale.set(1.2, 0.9, 0.5);
+        crestBadge.position.set(0.02, 0.04, 0.15);
+        for (const y of [0.08, 0.2, 0.32]) {
+          const arrow = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.44, 6), aMetal);
+          arrow.position.set(-0.28, y, -0.24);
+          arrow.rotation.z = -0.1;
+          const head = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 4), aAccent);
+          head.position.set(-0.28, y + 0.24, -0.24);
+          head.rotation.z = Math.PI;
+          g.add(arrow, head);
+        }
+        g.add(cape, mantle, quiver, strap, band, crestBadge);
+        return g;
+      },
+    );
     for (const side of [
       { bones: ['UpperArm.L', 'LeftArm', 'upperarm.l', 'L_Upperarm'], left: true },
       { bones: ['UpperArm.R', 'RightArm', 'upperarm.r', 'R_Upperarm'], left: false },

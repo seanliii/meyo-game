@@ -184,7 +184,10 @@ export function buildZoneMesh(z: Readonly<Zone>, world: IWorld, teamColor: numbe
     depthWrite: false,
   });
   underMat.toneMapped = false;
-  const under = new THREE.Mesh(new THREE.RingGeometry(z.radius * 0.76, z.radius + 0.24, 40), underMat);
+  const under = new THREE.Mesh(
+    new THREE.RingGeometry(z.radius * 0.76, z.radius + 0.24, 40),
+    underMat,
+  );
   under.rotation.x = -Math.PI / 2;
   under.position.y = 0.08;
   holder.add(under);
@@ -212,12 +215,19 @@ export function buildZoneMesh(z: Readonly<Zone>, world: IWorld, teamColor: numbe
     depthWrite: false,
   });
   glowRimMat.toneMapped = false;
-  const glowRim = new THREE.Mesh(new THREE.RingGeometry(z.radius * 0.88, z.radius + 0.34, 40), glowRimMat);
+  const glowRim = new THREE.Mesh(
+    new THREE.RingGeometry(z.radius * 0.88, z.radius + 0.34, 40),
+    glowRimMat,
+  );
   glowRim.rotation.x = -Math.PI / 2;
   glowRim.position.y = 0.11;
   holder.add(glowRim);
   const marks = new THREE.Group();
-  const markMat = new THREE.MeshBasicMaterial({ color: school.glow, transparent: true, opacity: 0.95 });
+  const markMat = new THREE.MeshBasicMaterial({
+    color: school.glow,
+    transparent: true,
+    opacity: 0.95,
+  });
   markMat.toneMapped = false;
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;

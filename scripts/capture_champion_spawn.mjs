@@ -1,6 +1,6 @@
-import puppeteer from 'puppeteer-core';
 import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import puppeteer from 'puppeteer-core';
 
 const CHROME =
   process.env.CHROME ??
@@ -89,7 +89,7 @@ async function captureCanvas(page, path) {
     }
     return c.toDataURL('image/png');
   });
-  if (!dataUrl || !dataUrl.startsWith('data:image/png;base64,')) {
+  if (!dataUrl?.startsWith('data:image/png;base64,')) {
     throw new Error(`canvas capture failed: ${path}`);
   }
   await writeFile(path, Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64'));
@@ -100,7 +100,9 @@ async function rightClickCanvas(page, x, y) {
   await page.mouse.click(x, y, { button: 'right' });
 }
 
-const slug = CHAMPION.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const slug = CHAMPION.toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_|_$/g, '');
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,

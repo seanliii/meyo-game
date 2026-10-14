@@ -21,8 +21,8 @@
 
 import type { AbilityKey } from '../sim/types';
 import {
-  askForFonts,
   art,
+  askForFonts,
   C,
   cutPath,
   diamond,
@@ -36,9 +36,6 @@ import {
   type Rect,
   rivet,
   roundRect,
-  rule,
-  setFont,
-  textWidth,
   watchArtLoad,
   well,
 } from './hud_native_paint';
@@ -667,13 +664,19 @@ function paintRail(
   rivet(ctx, b.x + 9 * k, b.y + b.h - 9 * k, 2.1 * k);
   rivet(ctx, b.x + b.w - 9 * k, b.y + b.h - 9 * k, 2.1 * k);
 
-  for (const c of L.chips) chipBadge(ctx, c.rect, view.chips.find((v) => v.key === c.key) ?? {
-    key: '',
-    glyph: '',
-    sub: '',
-    tip: '',
-    look: null,
-  }, k);
+  for (const c of L.chips)
+    chipBadge(
+      ctx,
+      c.rect,
+      view.chips.find((v) => v.key === c.key) ?? {
+        key: '',
+        glyph: '',
+        sub: '',
+        tip: '',
+        look: null,
+      },
+      k,
+    );
 
   // The objective line: the Warden's clock, in the rail's own voice.
   if (view.meta) {
@@ -704,7 +707,13 @@ function paintRail(
   ctx.stroke();
   ctx.restore();
   ctx.beginPath();
-  ctx.arc(lcx, lcy, lr + 6 * k, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.001, view.xpFrac));
+  ctx.arc(
+    lcx,
+    lcy,
+    lr + 6 * k,
+    -Math.PI / 2,
+    -Math.PI / 2 + Math.PI * 2 * Math.max(0.001, view.xpFrac),
+  );
   ctx.strokeStyle = C.blue;
   ctx.lineWidth = 3.4 * k;
   ctx.lineCap = 'butt';
@@ -1065,7 +1074,8 @@ export class HudNative {
 
   private shopLayout(v: HudInput): ShopLayout {
     const key = `${v.width}x${v.height}|${v.scale}|${this.shopScroll}|${v.shop.detail ? 'd' : 'n'}|${v.shop.sections.map((s) => s.items.length).join(',')}`;
-    if (this.shopLayoutCache && this.shopLayoutCache.key === key) return this.shopLayoutCache.layout;
+    if (this.shopLayoutCache && this.shopLayoutCache.key === key)
+      return this.shopLayoutCache.layout;
     const layout = layoutShop(v, this.shopScroll);
     this.shopLayoutCache = { key, layout };
     return layout;
@@ -1087,11 +1097,11 @@ export class HudNative {
 // readable on its own.
 import {
   type EndLayout,
-  type ShopLayout,
   layoutEnd,
   layoutShop,
   paintEnd,
   paintShop,
+  type ShopLayout,
 } from './hud_native_windows';
 
-export type { ShopLayout, EndLayout };
+export type { EndLayout, ShopLayout };

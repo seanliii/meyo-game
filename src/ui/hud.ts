@@ -4,7 +4,6 @@
 // screens, and the Escape menu. Reads the world through IWorld only; content
 // data (items, sigils, champions) is data-as-code it may read directly.
 
-import { HudSurface } from '../render/hud_surface';
 import { announceVoice } from '../game/announcer';
 import type { PostMatchAction } from '../game/flow';
 import { requestGameFullscreen, toggleGameFullscreen } from '../game/fullscreen';
@@ -15,6 +14,7 @@ import type { CastTouch } from '../game/touch';
 import { effectiveUiScale, followThumbScale, followUiScale } from '../game/ui_scale';
 import { trackStep } from '../net/stats';
 import { aspectColor, WRATH_COLOR } from '../render/aspect_colors';
+import { HudSurface } from '../render/hud_surface';
 import { championPortraitUrl } from '../render/portraits';
 import type { Status } from '../sim/combat/status';
 import { CAMPS } from '../sim/content/camps';
@@ -36,20 +36,7 @@ import { BOON_DAMAGE_PER_STACK } from '../sim/team_buffs';
 import type { AbilityKey, TeamId } from '../sim/types';
 import type { IWorld } from '../world_api';
 import { abilityIconUrl, passiveIconUrl, sigilIconUrl } from './ability_icons';
-import { ITEM_ICONS } from './hud_native_windows';
-import {
-  type CardView,
-  type ChipView,
-  type EndRowView,
-  type EndView,
-  type HudHit,
-  type HudInput,
-  HudNative,
-  type RailView,
-  type ShopView,
-  type SlotView,
-} from './hud_native';
-import { accountOffer, OFFER_CALL } from './account_offer';
+import { accountOffer } from './account_offer';
 import {
   boonChipFace,
   type ChipFace,
@@ -59,7 +46,6 @@ import {
 } from './chip_text';
 import {
   buildFeedbackBox,
-  FEEDBACK_ASK,
   type FeedbackBox,
   type FeedbackWhere,
   NUDGE_LABEL,
@@ -69,6 +55,16 @@ import {
   nudgeVisible,
   stepNudge,
 } from './feedback_box';
+import {
+  type CardView,
+  type ChipView,
+  type EndRowView,
+  type HudHit,
+  type HudInput,
+  HudNative,
+  type SlotView,
+} from './hud_native';
+import { ITEM_ICONS } from './hud_native_windows';
 import { thumbClusterCss } from './thumb_cluster';
 
 interface ChipLook {
@@ -85,7 +81,6 @@ import {
   statLabel,
 } from './describe';
 import { iconDataUrl, itemIconUrl } from './icons';
-import { DISCORD } from './links';
 import { MultikillLadder, type MultikillLook, multikillLook } from './multikill';
 import {
   creatureName,
@@ -1326,7 +1321,6 @@ export class Hud {
   private endHover: string | null = null;
   // Set by setMatchResult, read when the end screen is drawn.
   private endRatingText = '';
-  private endRatingColor = '#93a87c';
   // The end screen's content, built once when the match is decided.
   private endInfo: {
     title: string;
@@ -1920,7 +1914,8 @@ export class Hud {
       e.stopPropagation();
       const press = touch;
       touch = null;
-      if (press.kind === 'ability') this.castTouch?.abilityUp(press.key as AbilityKey, e.clientX, e.clientY);
+      if (press.kind === 'ability')
+        this.castTouch?.abilityUp(press.key as AbilityKey, e.clientX, e.clientY);
       else this.castTouch?.sigilUp(press.slot, e.clientX, e.clientY);
       if (performance.now() - press.at >= LONG_PRESS_MS) return;
       if (press.kind === 'ability') this.castTaps?.ability(press.key as AbilityKey);
@@ -1988,7 +1983,8 @@ export class Hud {
     way?: 'bot',
   ): void {
     if (!rated) {
-      this.endRatingText = 'Not rated: rating needs a public queue match with humans on both sides.';
+      this.endRatingText =
+        'Not rated: rating needs a public queue match with humans on both sides.';
       this.endRatingColor = '#93a87c';
       this.surface.markDirty();
       return;
@@ -2589,7 +2585,9 @@ export class Hud {
       // unobstructed view of the hero instead of demanding a modal close.
       if (shouldPromptOpeningShop(this.world.time, this.world.winner)) {
         this.toast(
-          this.coarsePointer ? 'You spawned with 500g. Tap Shop to buy.' : 'You spawned with 500g. Press P to shop.',
+          this.coarsePointer
+            ? 'You spawned with 500g. Tap Shop to buy.'
+            : 'You spawned with 500g. Press P to shop.',
         );
       }
       // The feedback line likewise: the start of a match only.
@@ -3041,7 +3039,12 @@ export class Hud {
       Math.round(rail.hpFrac * 200),
       Math.round(rail.manaFrac * 200),
       Math.round(rail.xpFrac * 200),
-      rail.slots.map((x) => `${x.key}${x.rank}${x.cd ?? ''}${x.canRank ? 1 : 0}${x.armed ? 1 : 0}${x.nomana ? 1 : 0}`).join(),
+      rail.slots
+        .map(
+          (x) =>
+            `${x.key}${x.rank}${x.cd ?? ''}${x.canRank ? 1 : 0}${x.armed ? 1 : 0}${x.nomana ? 1 : 0}`,
+        )
+        .join(),
       rail.chips.map((x) => `${x.key}${x.sub}`).join(),
       rail.inv.map((x) => x.icon ?? x.initials).join(),
       this.shopOpen ? `${this.shopSelected ?? ''}:${rail.gold}:${this.shopHover ?? ''}` : '',

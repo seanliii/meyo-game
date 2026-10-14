@@ -10,8 +10,8 @@
 // seed gives stays the fill's.
 
 import { fillSeats, type HeldSeat, TEAM_SIZE } from '../../fill';
-import type { ChampionDef } from '../champions';
 import type { Rng } from '../../rng';
+import type { ChampionDef } from '../champions';
 import { BRAWLER } from './brawler';
 import { JUNGLER } from './jungler';
 import { type BotDef, LANER } from './laner';

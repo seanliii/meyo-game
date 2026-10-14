@@ -2,13 +2,16 @@
 // (Sylra) and the original problem champion (Korrath) so we can verify the
 // Hero_Presentation_Pass (ground shadow disc + ambient motes + tuned rim)
 // across the roster, not just one body.
-import puppeteer from 'puppeteer-core';
-import { mkdirSync } from 'node:fs';
 
-const CHROME = process.env.CHROME ??
+import { mkdirSync } from 'node:fs';
+import puppeteer from 'puppeteer-core';
+
+const CHROME =
+  process.env.CHROME ??
   '/docker/opt/customdata/meyo-runtime/p75097875-9ea2bb05cf60f71e/runtime/browser/chrome-linux64/chrome';
 const URL = process.env.URL ?? 'http://127.0.0.1:8810';
-const OUT = '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_presentation_v5';
+const OUT =
+  '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_presentation_v5';
 
 mkdirSync(OUT, { recursive: true });
 
@@ -74,7 +77,7 @@ await page.evaluate(() => {
 await sleep(3500);
 await page.evaluate(() => {
   const buttons = [...document.querySelectorAll('button.menu-champ')];
-  const korrath = buttons.find((b) => b.textContent && b.textContent.includes('Korrath'));
+  const korrath = buttons.find((b) => b.textContent?.includes('Korrath'));
   if (korrath) korrath.click();
 });
 await sleep(800);

@@ -125,13 +125,7 @@ export const CHAMPION_LIST: readonly ChampionDef[] = ALL;
 // ten-champion catalog stays available in the collection and browser; these
 // are the five we put first in front of new players and the five house bots
 // field in practice / sparring by default.
-export const STARTER_CHAMPION_IDS = [
-  KORRATH.id,
-  DAIN.id,
-  SYLRA.id,
-  ASHVYN.id,
-  MAERA.id,
-] as const;
+export const STARTER_CHAMPION_IDS = [KORRATH.id, DAIN.id, SYLRA.id, ASHVYN.id, MAERA.id] as const;
 
 export const STARTER_CHAMPION_LIST: readonly ChampionDef[] = STARTER_CHAMPION_IDS.map(
   (id) => CHAMPIONS[id]!,

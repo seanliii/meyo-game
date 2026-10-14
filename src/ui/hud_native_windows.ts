@@ -6,13 +6,14 @@
 // answer — including Play again and Return to menu, which is where the
 // shop-open deadlock used to live.
 
+import type { CardView, DetailView, EndView, HudInput, ShopView } from './hud_native';
 import {
   art,
   C,
-  drawArtLit,
   cutPath,
   diamond,
   drawArt,
+  drawArtLit,
   drawText,
   FONT_BODY,
   FONT_TITLE,
@@ -26,7 +27,6 @@ import {
   textWidth,
   well,
 } from './hud_native_paint';
-import type { CardView, DetailView, EndView, HudInput, ShopView } from './hud_native';
 
 export interface ShopLayout {
   box: Rect;
@@ -178,7 +178,7 @@ function tierColor(tier: 1 | 2 | 3): string {
   return tier === 1 ? '#7f8ea3' : tier === 2 ? '#a8c0d6' : '#e0b95c';
 }
 
-function tierName(tier: 1 | 2 | 3): string {
+function _tierName(tier: 1 | 2 | 3): string {
   return tier === 1 ? 'Component' : tier === 2 ? 'Finished item' : 'Legendary';
 }
 
@@ -328,7 +328,7 @@ function paintDetail(
   const textX = iR.x + iw + 14 * k;
   setFont(ctx, `700 ${21 * k}px ${FONT_TITLE}`);
   const titleLines = wrap(ctx, d.name.toUpperCase(), pane.x + pane.w - textX - 6 * k, 2);
-  let ty = y + 22 * k;
+  const ty = y + 22 * k;
   titleLines.forEach((line, i) => {
     drawText(ctx, line, textX, ty + i * 21 * k, {
       font: `700 ${21 * k}px ${FONT_TITLE}`,
@@ -542,11 +542,17 @@ export function paintShop(
     glow: 'rgba(243,203,105,0.3)',
     glowBlur: 8 * k,
   });
-  drawText(ctx, shop.status, L.box.x + 30 * k + wordW + 24 * k + textWidth(ctx, shop.gold, 0) + 24 * k, L.head.y + 31 * k, {
-    font: `400 ${11.5 * k}px ${FONT_BODY}`,
-    fill: 'rgba(168,190,216,0.9)',
-    engrave: false,
-  });
+  drawText(
+    ctx,
+    shop.status,
+    L.box.x + 30 * k + wordW + 24 * k + textWidth(ctx, shop.gold, 0) + 24 * k,
+    L.head.y + 31 * k,
+    {
+      font: `400 ${11.5 * k}px ${FONT_BODY}`,
+      fill: 'rgba(168,190,216,0.9)',
+      engrave: false,
+    },
+  );
   rule(ctx, L.box.x + 20 * k, L.head.y + L.head.h - 4 * k, L.box.w - 40 * k, false);
 
   // Close: a steel plaque, never a browser button.
@@ -642,7 +648,6 @@ export function paintShop(
   L.builds = detail.builds;
 }
 
-
 // ---------------------------------------------------------------------------
 // End screen
 // ---------------------------------------------------------------------------
@@ -672,7 +677,12 @@ export function layoutEnd(v: HudInput): EndLayout {
   return { box, table, again, menu, offer };
 }
 
-export function paintEnd(ctx: CanvasRenderingContext2D, v: HudInput, L: EndLayout, k: number): void {
+export function paintEnd(
+  ctx: CanvasRenderingContext2D,
+  v: HudInput,
+  L: EndLayout,
+  k: number,
+): void {
   const end: EndView = v.end;
   ctx.save();
   ctx.fillStyle = 'rgba(2,4,9,0.70)';
@@ -706,7 +716,12 @@ export function paintEnd(ctx: CanvasRenderingContext2D, v: HudInput, L: EndLayou
   const tw = textWidth(ctx, title.toUpperCase(), 10 * k);
   const ry = v.height * 0.16 + 18 * k;
   ctx.save();
-  const rg = ctx.createLinearGradient(v.width / 2 - tw / 2 - 90 * k, 0, v.width / 2 + tw / 2 + 90 * k, 0);
+  const rg = ctx.createLinearGradient(
+    v.width / 2 - tw / 2 - 90 * k,
+    0,
+    v.width / 2 + tw / 2 + 90 * k,
+    0,
+  );
   rg.addColorStop(0, 'rgba(243,203,105,0)');
   rg.addColorStop(0.5, 'rgba(243,203,105,0.85)');
   rg.addColorStop(1, 'rgba(243,203,105,0)');
@@ -752,11 +767,17 @@ export function paintEnd(ctx: CanvasRenderingContext2D, v: HudInput, L: EndLayou
     if (!team) continue;
     const tx = t.x + i * colW + 18 * k;
     const ink = i === 0 ? '#9dbcf5' : '#f5a3a3';
-    drawText(ctx, `${team.label.toUpperCase()}${team.winner ? ' \u00b7 WINNER' : ''}`, tx, t.y + 26 * k, {
-      font: `700 ${13 * k}px ${FONT_TITLE}`,
-      fill: team.winner ? C.gold : ink,
-      track: 2 * k,
-    });
+    drawText(
+      ctx,
+      `${team.label.toUpperCase()}${team.winner ? ' \u00b7 WINNER' : ''}`,
+      tx,
+      t.y + 26 * k,
+      {
+        font: `700 ${13 * k}px ${FONT_TITLE}`,
+        fill: team.winner ? C.gold : ink,
+        track: 2 * k,
+      },
+    );
     rule(ctx, tx, t.y + 34 * k, colW - 40 * k, false);
     let ry2 = t.y + 58 * k;
     for (const row of team.rows) {
@@ -846,12 +867,7 @@ export function paintEnd(ctx: CanvasRenderingContext2D, v: HudInput, L: EndLayou
     });
   }
 
-  const banner = (
-    r: Rect,
-    label: string,
-    primary: boolean,
-    hovered: boolean,
-  ): void => {
+  const banner = (r: Rect, label: string, primary: boolean, hovered: boolean): void => {
     ctx.save();
     ctx.shadowColor = primary ? 'rgba(243,203,105,0.45)' : 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = primary ? 20 * k : 14 * k;
@@ -877,10 +893,16 @@ export function paintEnd(ctx: CanvasRenderingContext2D, v: HudInput, L: EndLayou
   banner(L.again, 'Play again', true, end.hover === 'again');
   banner(L.menu, 'Return to menu', false, end.hover === 'menu');
 
-  drawText(ctx, 'Looking for a team, or something to report? Join the Discord.', v.width / 2, L.menu.y + L.menu.h + 28 * k, {
-    font: `400 ${11 * k}px ${FONT_BODY}`,
-    fill: 'rgba(150,172,200,0.85)',
-    align: 'center',
-    engrave: false,
-  });
+  drawText(
+    ctx,
+    'Looking for a team, or something to report? Join the Discord.',
+    v.width / 2,
+    L.menu.y + L.menu.h + 28 * k,
+    {
+      font: `400 ${11 * k}px ${FONT_BODY}`,
+      fill: 'rgba(150,172,200,0.85)',
+      align: 'center',
+      engrave: false,
+    },
+  );
 }

@@ -17,13 +17,7 @@ import { playedByHand, seatWay } from './ways';
 // clean five-role starter roster, so a fresh player can field a full
 // classic comp without the match immediately falling back to the creature
 // outliers that make the battlefield read like a prototype.
-export const STARTER_COLLECTION: readonly string[] = [
-  'dain',
-  'sylra',
-  'ashvyn',
-  'maera',
-  'fenn',
-];
+export const STARTER_COLLECTION: readonly string[] = ['dain', 'sylra', 'ashvyn', 'maera', 'fenn'];
 
 // Hand-set, per champion, moved in either direction whenever the
 // maintainer decides; there is deliberately no formula behind these

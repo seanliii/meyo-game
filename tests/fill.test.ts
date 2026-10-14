@@ -10,9 +10,9 @@ import { sparringPicks } from '../src/game/sparring_core';
 import { buildMatchSim } from '../src/net/replay';
 import {
   CHAMPIONS,
+  type ChampionRole,
   STARTER_CHAMPION_IDS,
   STARTER_CHAMPION_LIST,
-  type ChampionRole,
 } from '../src/sim/content/champions';
 import { LANER_PLAYBOOK } from '../src/sim/content/playbooks/laner';
 import { fillSeats, fillTeam, TEAM_SIZE } from '../src/sim/fill';

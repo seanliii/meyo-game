@@ -72,7 +72,12 @@ export function sparringPicks(bot: SparBot, seed = 1): ReplayPick[] {
     },
   ];
   const house = (team: 0 | 1, held: string[]): void => {
-    for (const [i, seat] of houseSeats(held.map((id) => ({ championId: id })), rng, undefined, STARTER_CHAMPION_LIST).entries()) {
+    for (const [i, seat] of houseSeats(
+      held.map((id) => ({ championId: id })),
+      rng,
+      undefined,
+      STARTER_CHAMPION_LIST,
+    ).entries()) {
       picks.push({
         name: houseName(seat.bot),
         team,

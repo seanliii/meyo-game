@@ -5,7 +5,14 @@
 
 import * as THREE from 'three';
 import { attackSoundOf, castSoundOf } from '../game/champion_sounds';
-import { versioned } from '../game/asset_version';
+import {
+  glProfile,
+  renderScaleOverride,
+  SOFTWARE_SCALE_BUDGET_MS,
+  SOFTWARE_SCALE_FLOOR,
+  SOFTWARE_SCALE_START,
+  SOFTWARE_SCALE_STEP,
+} from '../game/gl_profile';
 import { playCastSfx, playSfx } from '../game/sfx';
 import { attackWindupSeconds, RANGED_THRESHOLD } from '../sim/combat/auto_attack';
 import type { CastSpec } from '../sim/combat/casting';
@@ -36,11 +43,12 @@ import {
 import { buildCreatureMesh } from './creature_shapes';
 import { FloatingText, makeTextSprite } from './floating_text';
 import { fogSheetGeometry } from './fog_sheet';
+import type { HudSurface } from './hud_surface';
 import {
+  type MinionVisual,
   maybeBuildMinionVisualMesh,
   maybeUpgradeMinionVisual,
   preloadMinionAssets,
-  type MinionVisual,
 } from './minion_assets';
 import { buildMinionMesh } from './minion_shapes';
 import {
@@ -51,14 +59,6 @@ import {
 } from './muzzle_spawn';
 import { pickShieldHolder, type ShieldCandidate } from './shield_holder';
 import { crownHeight, crownLift, flightProgress, isStill } from './structure_fire';
-import {
-  glProfile,
-  renderScaleOverride,
-  SOFTWARE_SCALE_BUDGET_MS,
-  SOFTWARE_SCALE_FLOOR,
-  SOFTWARE_SCALE_START,
-  SOFTWARE_SCALE_STEP,
-} from '../game/gl_profile';
 import type { RenderTerrain } from './terrain';
 import { toonifyMaterials } from './toon';
 import { CHARGE_S, nextChargeDelayS } from './tower_shot';
@@ -70,7 +70,6 @@ import {
   type SpellVisual,
   spellVisualOf,
 } from './vfx/catalog';
-import { HudSurface } from './hud_surface';
 import { VfxSystem } from './vfx/system';
 import { disposeEffect } from './vfx/timed';
 import { TowerShotFx } from './vfx/tower_shot_fx';
@@ -1028,8 +1027,7 @@ export class Renderer {
   // art and the textures are untouched, and no real GPU runs this.
   private adaptPresentScale(gapMs: number): void {
     if (gapMs <= 0) return;
-    this.presentGapEma =
-      this.presentGapEma === 0 ? gapMs : this.presentGapEma * 0.6 + gapMs * 0.4;
+    this.presentGapEma = this.presentGapEma === 0 ? gapMs : this.presentGapEma * 0.6 + gapMs * 0.4;
     let next = this.presentScale;
     if (this.presentGapEma > SOFTWARE_SCALE_BUDGET_MS) {
       this.comfortablePresents = 0;
@@ -1848,13 +1846,13 @@ export class Renderer {
   }
 
   // Real-3D champion pass (2026-10-12): no in-world portrait billboard —
-// the previously-mounted LoL-splash sprite was overpainting the GLB and
-// destroying the user's only "real 3D" requirement. Champion presence is
-// now the rigged GLB itself, with toon shader, rim light, hero shadow
-// disc, team ring, and a permanent aura/pip pulse so it dominates the
-// frame at every zoom level. HUD-side portrait data URLs are still served
-// by render/portraits.ts (championPortraitUrl), used by HudPortrait and
-// the selection grid — that path stays untouched.
+  // the previously-mounted LoL-splash sprite was overpainting the GLB and
+  // destroying the user's only "real 3D" requirement. Champion presence is
+  // now the rigged GLB itself, with toon shader, rim light, hero shadow
+  // disc, team ring, and a permanent aura/pip pulse so it dominates the
+  // frame at every zoom level. HUD-side portrait data URLs are still served
+  // by render/portraits.ts (championPortraitUrl), used by HudPortrait and
+  // the selection grid — that path stays untouched.
 
   // Swaps a champion's procedural figure for its rigged GLB once the asset
   // is ready. Fail-soft both ways: on an asset miss the figure stays, and a
@@ -2237,12 +2235,23 @@ export class Renderer {
           u.kind === 'champion' || u.kind === 'creature' || u.kind === 'warden'
             ? 8 + Math.round(impact * 7)
             : 5 + Math.round(impact * 3);
-        if (dhp >= Math.max(u.kind === 'minion' ? 12 : 8, u.maxHp * (u.kind === 'minion' ? 0.035 : 0.025))) {
-          this.vfx.sparkBurst(u.pos.x, u.kind === 'minion' ? 0.76 : 0.96, u.pos.z, sparkColor, sparkCount, 4.4 + impact * 4.4, {
-            life: 0.24 + impact * 0.18,
-            size: sparkSize,
-            gravity: 8.5,
-          });
+        if (
+          dhp >=
+          Math.max(u.kind === 'minion' ? 12 : 8, u.maxHp * (u.kind === 'minion' ? 0.035 : 0.025))
+        ) {
+          this.vfx.sparkBurst(
+            u.pos.x,
+            u.kind === 'minion' ? 0.76 : 0.96,
+            u.pos.z,
+            sparkColor,
+            sparkCount,
+            4.4 + impact * 4.4,
+            {
+              life: 0.24 + impact * 0.18,
+              size: sparkSize,
+              gravity: 8.5,
+            },
+          );
           this.vfx.glowFlash(
             u.pos.x,
             u.kind === 'minion' ? 0.82 : 1.02,
@@ -2591,9 +2600,9 @@ export class Renderer {
       // its opacity fall 1 → 0 on an ease-out curve; the column rises
       // 0 → 7.5 height on a fast initial spike and fades in lockstep.
       if (visible) {
-        const portal = t.mesh.children.find(
-          (c) => c.userData?.isSpawnPortal === true,
-        ) as THREE.Mesh | undefined;
+        const portal = t.mesh.children.find((c) => c.userData?.isSpawnPortal === true) as
+          | THREE.Mesh
+          | undefined;
         if (portal) {
           const age = nowMs - (portal.userData.startMs as number);
           const life = (portal.userData.lifeMs as number) || 1200;
@@ -2603,16 +2612,16 @@ export class Renderer {
           } else {
             const k = age / life;
             // Ease-out expansion: covers most ground in the first 35%.
-            const e = 1 - Math.pow(1 - k, 2.4);
+            const e = 1 - (1 - k) ** 2.4;
             const d = 0.4 + ((portal.userData.maxDiam as number) - 0.4) * e;
             portal.scale.set(d, d, 1);
             (portal.material as THREE.MeshBasicMaterial).opacity = 1 - e * e;
             portal.rotation.z = age * 0.004;
           }
         }
-        const column = t.mesh.children.find(
-          (c) => c.userData?.isSpawnColumn === true,
-        ) as THREE.Mesh | undefined;
+        const column = t.mesh.children.find((c) => c.userData?.isSpawnColumn === true) as
+          | THREE.Mesh
+          | undefined;
         if (column) {
           const age = nowMs - (column.userData.startMs as number);
           const life = (column.userData.lifeMs as number) || 1100;
@@ -2662,7 +2671,6 @@ export class Renderer {
           this.championVisuals.delete(id);
         }
       }
-
     }
 
     for (const [id, p] of this.world.projectiles) {
@@ -3308,9 +3316,7 @@ export class Renderer {
           t.flashMats = [];
           t.mesh.traverse((child) => {
             const mat = (child as THREE.Mesh).material as
-              | (THREE.MeshLambertMaterial &
-                  THREE.MeshToonMaterial &
-                  THREE.MeshStandardMaterial)
+              | (THREE.MeshLambertMaterial & THREE.MeshToonMaterial & THREE.MeshStandardMaterial)
               | undefined;
             if (
               mat?.isMeshLambertMaterial ||

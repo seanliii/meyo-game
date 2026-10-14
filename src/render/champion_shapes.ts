@@ -36,9 +36,9 @@ interface ChampionLook {
   // crest, and head protrusion.
   helm:
     | 'great' // wide-crest great helm (heavy tank)
-    | 'open'  // open-faced helm with side plates (fighter)
-    | 'cowl'  // pointed archer cowl (marksman)
-    | 'crwn'  // mage crown with side wings (caster)
+    | 'open' // open-faced helm with side plates (fighter)
+    | 'cowl' // pointed archer cowl (marksman)
+    | 'crwn' // mage crown with side wings (caster)
     | 'hood'; // long drooping hood (support)
   // Cloth amount for the cape: 0 = none, 1 = full length. Heavies get short
   // tabards, casters / rangers get full capes.
@@ -71,7 +71,13 @@ function glowMat(color: number, intensity = 0.7): THREE.MeshLambertMaterial {
   return m;
 }
 
-function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THREE.Material, darkMat: THREE.Material, b: number): void {
+function buildHelm(
+  kind: ChampionLook['helm'],
+  head: THREE.Group,
+  accentMat: THREE.Material,
+  darkMat: THREE.Material,
+  b: number,
+): void {
   const h = 0.26 * b;
   const r = 0.24 * b;
   const headSphere = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), darkMat);
@@ -79,7 +85,10 @@ function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THR
   switch (kind) {
     case 'great': {
       // Wide great helm with a flat top crest and a side strap.
-      const helm = new THREE.Mesh(new THREE.BoxGeometry(0.6 * b, 0.34 * b, 0.42 * b), flatMat(0x2c3340));
+      const helm = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6 * b, 0.34 * b, 0.42 * b),
+        flatMat(0x2c3340),
+      );
       helm.position.y = 0.04;
       head.add(helm);
       const visor = new THREE.Mesh(new THREE.BoxGeometry(0.32 * b, 0.04, 0.02), flatMat(0x111622));
@@ -97,7 +106,10 @@ function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THR
     case 'open': {
       // Open-faced helm: lower bowl + side plates + nose guard. Reads as
       // fighter more than as a faceless knight.
-      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.26 * b, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.65), flatMat(0x4a3a2e));
+      const bowl = new THREE.Mesh(
+        new THREE.SphereGeometry(0.26 * b, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.65),
+        flatMat(0x4a3a2e),
+      );
       bowl.position.y = 0.04;
       head.add(bowl);
       const nose = new THREE.Mesh(new THREE.BoxGeometry(0.06 * b, 0.18, 0.04), flatMat(0x111622));
@@ -121,7 +133,10 @@ function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THR
       cowl.position.y = 0.04;
       cowl.rotation.x = 0.18;
       head.add(cowl);
-      const face = new THREE.Mesh(new THREE.SphereGeometry(0.18 * b, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), flatMat(0x1a201a));
+      const face = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18 * b, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55),
+        flatMat(0x1a201a),
+      );
       face.position.set(0, -0.02, 0.06);
       head.add(face);
       const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), glowMat(0xc2e0a8, 1.0));
@@ -157,7 +172,10 @@ function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THR
     }
     case 'hood': {
       // Long drooping hood with a soft reading of "support / healer".
-      const hood = new THREE.Mesh(new THREE.SphereGeometry(0.34 * b, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.6), flatMat(0x22384c));
+      const hood = new THREE.Mesh(
+        new THREE.SphereGeometry(0.34 * b, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.6),
+        flatMat(0x22384c),
+      );
       hood.position.y = 0.05;
       head.add(hood);
       const face = new THREE.Mesh(new THREE.SphereGeometry(0.2 * b, 10, 7), flatMat(0xe6c5a8));
@@ -172,12 +190,21 @@ function buildHelm(kind: ChampionLook['helm'], head: THREE.Group, accentMat: THR
   }
 }
 
-function buildPauldrons(parent: THREE.Object3D, accentMat: THREE.Material, darkMat: THREE.Material, b: number, helm: ChampionLook['helm']): { left: THREE.Group; right: THREE.Group } {
+function buildPauldrons(
+  parent: THREE.Object3D,
+  accentMat: THREE.Material,
+  darkMat: THREE.Material,
+  b: number,
+  helm: ChampionLook['helm'],
+): { left: THREE.Group; right: THREE.Group } {
   const left = new THREE.Group();
   const right = new THREE.Group();
   // A layered pauldron = upper disc + lower band + rim plate. Reads as a
   // distinct shoulder silhouette against the torso.
-  for (const [group, side] of [[left, -1], [right, 1]] as const) {
+  for (const [group, side] of [
+    [left, -1],
+    [right, 1],
+  ] as const) {
     group.position.set(side * (0.44 * b + 0.06), 1.7, 0);
     const pad = new THREE.Mesh(new THREE.SphereGeometry(0.24 * b, 9, 6), accentMat);
     pad.scale.set(1.0, 0.5, 1.2);
@@ -200,7 +227,13 @@ function buildPauldrons(parent: THREE.Object3D, accentMat: THREE.Material, darkM
   return { left, right };
 }
 
-function buildCape(parent: THREE.Object3D, bodyMat: THREE.Material, bodyColor: THREE.Color, b: number, length: number): void {
+function buildCape(
+  parent: THREE.Object3D,
+  bodyMat: THREE.Material,
+  bodyColor: THREE.Color,
+  b: number,
+  length: number,
+): void {
   if (length <= 0.01) return;
   const color = bodyColor.clone().multiplyScalar(0.5);
   const capeMat = flatMat(color.getHex());
@@ -259,14 +292,20 @@ function buildWeapon(
         const fist = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), accentMat);
         fist.position.set(side * (0.52 * b + 0.08), 0.95, 0.18);
         parent.add(fist);
-        const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.18), flatMat(teamColor));
+        const knuckles = new THREE.Mesh(
+          new THREE.BoxGeometry(0.34, 0.08, 0.18),
+          flatMat(teamColor),
+        );
         knuckles.position.set(side * (0.52 * b + 0.08), 1.05, 0.32);
         parent.add(knuckles);
       }
       break;
     }
     case 'orb': {
-      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), glowMat((accentMat as THREE.MeshLambertMaterial).color.getHex(), 0.7));
+      const orb = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.22),
+        glowMat((accentMat as THREE.MeshLambertMaterial).color.getHex(), 0.7),
+      );
       orb.position.set(baseX, baseY + 0.95, baseZ + 0.18);
       parent.add(orb);
       const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.4, 6), darkMat);
@@ -291,7 +330,10 @@ function buildWeapon(
       halo.position.set(0, baseY + 1.32, baseZ - 0.2);
       halo.rotation.x = Math.PI / 2;
       parent.add(halo);
-      const inner = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.04, 6, 18), glowMat(0xfff0c0, 0.9));
+      const inner = new THREE.Mesh(
+        new THREE.TorusGeometry(0.32, 0.04, 6, 18),
+        glowMat(0xfff0c0, 0.9),
+      );
       inner.position.set(0, baseY + 1.32, baseZ - 0.18);
       inner.rotation.x = Math.PI / 2;
       parent.add(inner);
@@ -310,7 +352,10 @@ function buildWeapon(
       break;
     }
     case 'bow': {
-      const arc = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.06, 7, 18, Math.PI * 1.1), accentMat);
+      const arc = new THREE.Mesh(
+        new THREE.TorusGeometry(0.62, 0.06, 7, 18, Math.PI * 1.1),
+        accentMat,
+      );
       arc.position.set(baseX - 0.05, baseY + 0.3, baseZ - 0.05);
       arc.rotation.y = Math.PI / 2;
       parent.add(arc);
@@ -327,7 +372,10 @@ function buildWeapon(
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.6, 6), darkMat);
       shaft.position.set(baseX, baseY + 0.1, baseZ);
       parent.add(shaft);
-      const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), glowMat((accentMat as THREE.MeshLambertMaterial).color.getHex(), 0.6));
+      const tip = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.2),
+        glowMat((accentMat as THREE.MeshLambertMaterial).color.getHex(), 0.6),
+      );
       tip.position.set(baseX, baseY + 1.4, baseZ);
       parent.add(tip);
       break;
@@ -366,7 +414,13 @@ export function buildChampionMesh(
   skin = 0,
 ): THREE.Group {
   const holder = new THREE.Group();
-  const look = (championId && LOOKS[championId]) || { deco: 'orb', bulk: 1, helm: 'open' as const, cape: 0.3, weaponPose: 'forward' as const };
+  const look = (championId && LOOKS[championId]) || {
+    deco: 'orb',
+    bulk: 1,
+    helm: 'open' as const,
+    cape: 0.3,
+    weaponPose: 'forward' as const,
+  };
   const b = look.bulk;
   const palette = skinOf(championId, skin);
   const bodyColor = new THREE.Color(palette.body ?? teamColor);
@@ -456,14 +510,18 @@ export function buildChampionMesh(
   buildWeapon(holder, look, accentMat, darkMat, b, teamColor);
 
   // TEAM RING — survives any skin so allegiance reads on the floor.
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.78 * b, 0.08, 8, 28),
-    flatMat(teamColor),
-  );
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.78 * b, 0.08, 8, 28), flatMat(teamColor));
   ring.position.y = 0.06;
   ring.rotation.x = Math.PI / 2;
   holder.add(ring);
 
-  holder.userData.anim = { legs, arms, torso, head, pauldrons, cape: holder.userData.clothRefs?.[0] ?? null };
+  holder.userData.anim = {
+    legs,
+    arms,
+    torso,
+    head,
+    pauldrons,
+    cape: holder.userData.clothRefs?.[0] ?? null,
+  };
   return holder;
 }

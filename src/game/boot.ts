@@ -84,8 +84,7 @@ const HOVER_CHECK_MS = 40;
 // used to hang the first in-match shop click until the browser lease died.
 // Real players still get the immersive fullscreen/lock path.
 const automationCursor =
-  typeof navigator !== 'undefined' &&
-  (navigator.webdriver === true || glProfile().software);
+  typeof navigator !== 'undefined' && (navigator.webdriver === true || glProfile().software);
 
 export function startPresentation(
   container: HTMLElement,

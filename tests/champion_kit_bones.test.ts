@@ -47,20 +47,20 @@ const KIT_BONES: Record<string, { glb: string; bones: string[] }> = {
   },
   dain: {
     glb: 'quaternius/Warrior.glb',
+    bones: ['Head', 'Torso', 'Abdomen', 'Hips', 'LowerArm.L', 'LowerArm.R', 'Fist.L', 'Fist.R'],
+  },
+  ashvyn: {
+    glb: 'quaternius/Ranger.glb',
     bones: [
       'Head',
       'Torso',
       'Abdomen',
       'Hips',
+      'UpperArm.L',
+      'UpperArm.R',
       'LowerArm.L',
       'LowerArm.R',
-      'Fist.L',
-      'Fist.R',
     ],
-  },
-  ashvyn: {
-    glb: 'quaternius/Ranger.glb',
-    bones: ['Head', 'Torso', 'Abdomen', 'Hips', 'UpperArm.L', 'UpperArm.R', 'LowerArm.L', 'LowerArm.R'],
   },
   sylra: {
     glb: 'sylra.glb',

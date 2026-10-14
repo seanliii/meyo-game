@@ -11,8 +11,7 @@ import { glProfile } from './gl_profile';
 // synthetic click, which is what hung the first in-match shop click until
 // the browser lease died. Real players still get the immersive path.
 const automation =
-  typeof navigator !== 'undefined' &&
-  (navigator.webdriver === true || glProfile().software);
+  typeof navigator !== 'undefined' && (navigator.webdriver === true || glProfile().software);
 
 // Resolves once the request has been answered, so a caller that wants the
 // screen turned as well (game/orientation.ts) can ask the moment the

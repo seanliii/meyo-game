@@ -1,6 +1,6 @@
-import puppeteer from 'puppeteer-core';
 import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import puppeteer from 'puppeteer-core';
 
 const CHROME =
   process.env.CHROME ??
@@ -119,7 +119,7 @@ async function captureCanvas(page, path) {
     }
     return c.toDataURL('image/png');
   });
-  if (!dataUrl || !dataUrl.startsWith('data:image/png;base64,')) {
+  if (!dataUrl?.startsWith('data:image/png;base64,')) {
     throw new Error(`canvas capture failed: ${path}`);
   }
   await writeFile(path, Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64'));
@@ -154,7 +154,8 @@ const page = await browser.newPage();
 const problems = [];
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => {
-  if (m.type() === 'error' && !/\b401\b/.test(m.text())) problems.push(`[console.error] ${m.text()}`);
+  if (m.type() === 'error' && !/\b401\b/.test(m.text()))
+    problems.push(`[console.error] ${m.text()}`);
 });
 page.on('requestfailed', (req) =>
   problems.push(`[requestfailed] ${req.url()} ${req.failure()?.errorText ?? ''}`),

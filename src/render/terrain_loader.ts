@@ -330,7 +330,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
   const brushLight = canopyLambert(0x5c8a3e);
   const brushHot = canopyLambert(0x7bab4f);
   const bark = terrainLambert(0x4c3f31);
-  const gold = terrainLambert(0x7c6741);
+  const _gold = terrainLambert(0x7c6741);
   const laneStone = groundLambert(0x6c6558);
   const laneWear = groundLambert(0x857866);
   const laneEdge = groundLambert(0x4f483d);
@@ -390,9 +390,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     inner = 0,
   ): THREE.Mesh => {
     const geometry =
-      inner > 0
-        ? new THREE.RingGeometry(inner, radius, 28)
-        : new THREE.CircleGeometry(radius, 28);
+      inner > 0 ? new THREE.RingGeometry(inner, radius, 28) : new THREE.CircleGeometry(radius, 28);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
     placeGround(mesh, x, z, nav.heightAt(x, z) + yLift);
@@ -405,7 +403,16 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     const center = map.size * 0.5;
     addGroundPlate(center, center, map.size + 54, map.size + 54, 0, abyss, -0.9, 0.34);
     addGroundPlate(center, center, map.size + 18, map.size + 18, 0, mud, -0.56, 0.28);
-    addGroundPlate(center, center, map.size * 0.96, map.size * 0.96, Math.PI / 4, wetEarth, -0.26, 0.22);
+    addGroundPlate(
+      center,
+      center,
+      map.size * 0.96,
+      map.size * 0.96,
+      Math.PI / 4,
+      wetEarth,
+      -0.26,
+      0.22,
+    );
   };
 
   // Brush_Keepout (2026-10-12, hero_world_finish). Clusters were being placed
@@ -579,12 +586,18 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     material: THREE.Material,
     capMaterial: THREE.Material = ivoryBright,
   ): void => {
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.82, radius, height, 6), material);
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.82, radius, height, 6),
+      material,
+    );
     placeGround(shaft, x, z, nav.heightAt(x, z) + height * 0.5);
     shaft.castShadow = true;
     shaft.receiveShadow = true;
     shell.add(shaft);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.24, radius * 1.02, 0.2, 6), capMaterial);
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 1.24, radius * 1.02, 0.2, 6),
+      capMaterial,
+    );
     placeGround(cap, x, z, nav.heightAt(x, z) + height + 0.11);
     cap.castShadow = true;
     cap.receiveShadow = true;
@@ -602,16 +615,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     const baseY = nav.heightAt(x, z) + 0.03;
     addRotatedBox(x, z, baseY, width * 1.3, 0.48, width * 1.3, angle, wallStone);
     addRotatedBox(x, z, baseY + 0.18, width, height, width, angle, teamTrim(team));
-    addRotatedBox(
-      x,
-      z,
-      baseY + height + 0.08,
-      width * 0.72,
-      0.42,
-      width * 0.72,
-      angle,
-      metal,
-    );
+    addRotatedBox(x, z, baseY + height + 0.08, width * 0.72, 0.42, width * 0.72, angle, metal);
     const gem = new THREE.Mesh(
       new THREE.OctahedronGeometry(width * 0.22),
       new THREE.MeshBasicMaterial({ color: team === 0 ? 0x86b8ff : 0xffa18f }),
@@ -862,16 +866,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
       const depth = (i - (steps - 1) * 0.5) * stepLength;
       const px = x + dx * depth;
       const pz = z + dz * depth;
-      addGroundPlate(
-        px,
-        pz,
-        stepLength * 1.06,
-        width,
-        angle,
-        material,
-        baseLift + i * 0.02,
-        0.08,
-      );
+      addGroundPlate(px, pz, stepLength * 1.06, width, angle, material, baseLift + i * 0.02, 0.08);
     }
   };
 
@@ -880,8 +875,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     x: number,
     z: number,
   ): { dx: number; dz: number; nx: number; nz: number } => {
-    const target =
-      map.sanctums.find((s) => s.team !== team) ??
+    const target = map.sanctums.find((s) => s.team !== team) ??
       map.fountains.find((f) => f.team !== team) ?? { x: map.size * 0.5, z: map.size * 0.5 };
     const dx = target.x - x;
     const dz = target.z - z;
@@ -994,20 +988,11 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
       0.5,
       stone,
     );
-    addParapet(
-      cx,
-      cz,
-      angle,
-      length * 0.86,
-      wallHeight,
-      depth * 0.62,
-      baseStone,
-      {
-        buttressEvery: Math.max(1.6, length * 0.2),
-        buttressScale: 0.95,
-        capMaterial: parapetStone,
-      },
-    );
+    addParapet(cx, cz, angle, length * 0.86, wallHeight, depth * 0.62, baseStone, {
+      buttressEvery: Math.max(1.6, length * 0.2),
+      buttressScale: 0.95,
+      capMaterial: parapetStone,
+    });
     addPlantedShoulder(
       cx,
       cz,
@@ -1597,14 +1582,15 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
         const pz = a.z + dz * t;
         if (nearBase(px, pz, 18)) continue;
         const toRiver = riverDistance(px, pz);
-        const segLen = Math.max(3.6, len / steps * 1.12);
+        const segLen = Math.max(3.6, (len / steps) * 1.12);
         const seed = i * 41 + step * 7 + px * 0.7 + pz * 0.31;
         for (const side of [-1, 1] as const) {
           const offset =
             map.laneWidth *
             (0.92 + seedNoise(seed + side * 5.1) * 0.42 + (toRiver < 15 ? 0.12 : 0.5));
           const skirtWidth =
-            map.laneWidth * (0.24 + seedNoise(seed + side * 8.4) * 0.14 + (toRiver < 15 ? 0.06 : 0.2));
+            map.laneWidth *
+            (0.24 + seedNoise(seed + side * 8.4) * 0.14 + (toRiver < 15 ? 0.06 : 0.2));
           const px0 = px + nx * side * offset;
           const pz0 = pz + nz * side * offset;
           addGroundPlate(
@@ -1705,7 +1691,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
         const px = a.x + dx * mid;
         const pz = a.z + dz * mid;
         if (nearBase(px, pz, 18)) continue;
-        const segLen = Math.max(2.8, len / steps * 0.96);
+        const segLen = Math.max(2.8, (len / steps) * 0.96);
         const segmentSeed = i * 29 + step * 5 + px * 0.9 + pz * 0.4;
         addGroundPlate(px, pz, segLen + 2, map.laneWidth * 1.34, angle, mud, -0.02, 0.1);
         addGroundPlate(px, pz, segLen + 1.5, map.laneWidth * 1.08, angle, wetEarth, 0.01, 0.08);
@@ -1742,8 +1728,18 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
           0.155,
           0.06,
         );
-        addGroundPlate(px, pz, segLen * 0.3, map.laneWidth * 0.045, angle, inlayMaterial, 0.155, 0.04);
-        if (step % 2 === 0) addLanePocket(px, pz, angle, step % 4 === 0 ? -1 : 1, map.laneWidth * 0.72);
+        addGroundPlate(
+          px,
+          pz,
+          segLen * 0.3,
+          map.laneWidth * 0.045,
+          angle,
+          inlayMaterial,
+          0.155,
+          0.04,
+        );
+        if (step % 2 === 0)
+          addLanePocket(px, pz, angle, step % 4 === 0 ? -1 : 1, map.laneWidth * 0.72);
         if (step % 3 === 0) {
           const side = step % 2 === 0 ? -1 : 1;
           const ox = Math.cos(angle + Math.PI / 2) * side * map.laneWidth * 0.63;
@@ -1816,8 +1812,20 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
           0.01,
           0.07,
         );
-        if (i % 2 === 0) addBoulder(bx + nx * side * 1.1, bz + nz * side * 1.1, 0.34 + seedNoise(i * 11 + px) * 0.16, 1.05, moss);
-        if (i % 3 === 0) addBrushCluster(bx + nx * side * 1.7, bz + nz * side * 1.7, 1.2 + seedNoise(i * 7 + pz) * 0.35);
+        if (i % 2 === 0)
+          addBoulder(
+            bx + nx * side * 1.1,
+            bz + nz * side * 1.1,
+            0.34 + seedNoise(i * 11 + px) * 0.16,
+            1.05,
+            moss,
+          );
+        if (i % 3 === 0)
+          addBrushCluster(
+            bx + nx * side * 1.7,
+            bz + nz * side * 1.7,
+            1.2 + seedNoise(i * 7 + pz) * 0.35,
+          );
         if (i % 4 === 1) {
           addGroundPlate(
             bx + nx * side * 2.1,
@@ -1900,8 +1908,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
       lift: number,
       from = 0,
       span = Math.PI * 2,
-    ): THREE.Mesh =>
-      flat(new THREE.RingGeometry(inner, outer, 64, 1, from, span), material, lift);
+    ): THREE.Mesh => flat(new THREE.RingGeometry(inner, outer, 64, 1, from, span), material, lift);
     // Laid floor over the whole terrace: the plaza is pavement, not lawn.
     flat(new THREE.CircleGeometry(radius * 2.72, 64), plazaStone, 0.085);
     // Courses, centre outward. The inner two echo the fountain apron; the
@@ -1991,7 +1998,20 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
         0.18,
       );
     }
-    addPavingRun(x, z, dx, dz, angle, radius * 0.86, radius * 2.7, radius * 1.5, 7, laneStone, stone, 0.035);
+    addPavingRun(
+      x,
+      z,
+      dx,
+      dz,
+      angle,
+      radius * 0.86,
+      radius * 2.7,
+      radius * 1.5,
+      7,
+      laneStone,
+      stone,
+      0.035,
+    );
     addPavingRun(
       x,
       z,
@@ -2206,7 +2226,7 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
       const px = x + nx * side * radius * 1.3 + dx * radius * 0.86;
       const pz = z + nz * side * radius * 1.3 + dz * radius * 0.86;
       const pennant = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.92), teamBanner(team));
-      pennant.rotation.y = angle + side * Math.PI / 2;
+      pennant.rotation.y = angle + (side * Math.PI) / 2;
       placeGround(pennant, px, pz, nav.heightAt(px, pz) + 1.22);
       shell.add(pennant);
     }
@@ -2313,7 +2333,14 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
       radius * 0.42,
       1.12,
     );
-    addBannerStrip(team, x - dx * radius * 0.66, z - dz * radius * 0.66, angle + Math.PI / 2, 1.56, radius * 0.52);
+    addBannerStrip(
+      team,
+      x - dx * radius * 0.66,
+      z - dz * radius * 0.66,
+      angle + Math.PI / 2,
+      1.56,
+      radius * 0.52,
+    );
     for (const side of [-1, 1] as const) {
       addRetainingWing(
         team,
@@ -2453,8 +2480,26 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     addWallRun(x - dx * 0.26, z - dz * 0.26, angle + Math.PI / 2, 2.84, 1.18, 0.22, parapetStone);
     addBoulder(x - nx * 1.92 + dx * 0.42, z - nz * 1.92 + dz * 0.42, 0.52, 1.35);
     addBoulder(x + nx * 1.92 + dx * 0.42, z + nz * 1.92 + dz * 0.42, 0.52, 1.35);
-    addRotatedBox(x - nx * 1.4 - dx * 0.28, z - nz * 1.4 - dz * 0.28, nav.heightAt(x, z) + 0.03, 0.46, 0.82, 1.48, angle, stoneDark);
-    addRotatedBox(x + nx * 1.4 - dx * 0.28, z + nz * 1.4 - dz * 0.28, nav.heightAt(x, z) + 0.03, 0.46, 0.82, 1.48, angle, stoneDark);
+    addRotatedBox(
+      x - nx * 1.4 - dx * 0.28,
+      z - nz * 1.4 - dz * 0.28,
+      nav.heightAt(x, z) + 0.03,
+      0.46,
+      0.82,
+      1.48,
+      angle,
+      stoneDark,
+    );
+    addRotatedBox(
+      x + nx * 1.4 - dx * 0.28,
+      z + nz * 1.4 - dz * 0.28,
+      nav.heightAt(x, z) + 0.03,
+      0.46,
+      0.82,
+      1.48,
+      angle,
+      stoneDark,
+    );
     addPylon(team, x - nx * 1.66 + dx * 0.24, z - nz * 1.66 + dz * 0.24, angle, 1.88, 0.44);
     addPylon(team, x + nx * 1.66 + dx * 0.24, z + nz * 1.66 + dz * 0.24, angle, 1.88, 0.44);
     addBannerStrip(team, x - dx * 0.76, z - dz * 0.76, angle + Math.PI / 2, 1.04, 0.62);
@@ -2479,7 +2524,8 @@ function addBattlefieldShell(root: THREE.Group, map: GameMap, nav: TerrainNavGri
     addBoulder(camp.x - 1, camp.z + 0.78, 0.54, 1.08, stoneDark);
   }
   for (const tower of map.towers) addTowerChoke(tower.team, tower.x, tower.z);
-  for (const fountain of map.fountains) addFountainDress(fountain.team, fountain.x, fountain.z, fountain.r);
+  for (const fountain of map.fountains)
+    addFountainDress(fountain.team, fountain.x, fountain.z, fountain.r);
   for (const sanctum of map.sanctums) addBaseDress(sanctum.team, sanctum.x, sanctum.z, 4.1);
   root.add(shell);
 }
@@ -2589,7 +2635,8 @@ export function terrainMode(search: string = window.location.search): TerrainMod
 // The parts of the export that are a floor rather than a thing standing on
 // one. They take the light and the shadows of the world; everything else
 // casts as well.
-const AUTHORED_GROUND = /^(09 \| (SOL|EAU|CENTRE|CHAUSSEES|CHEMINS|JUNGLE)|SOL \||BERGE|ANCRAGE|ROSE \|)/;
+const AUTHORED_GROUND =
+  /^(09 \| (SOL|EAU|CENTRE|CHAUSSEES|CHEMINS|JUNGLE)|SOL \||BERGE|ANCRAGE|ROSE \|)/;
 
 // The authored look on a software rasterizer (gl_profile.ts): the painted
 // atlas carries the whole read of the export - the stone courses, the gold

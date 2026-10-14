@@ -7,13 +7,16 @@
 // We start the match, lock in, then snap at 250 ms (portal opening),
 // 600 ms (column near peak), and 1500 ms (cinematic gone, hero in
 // scene). Three frames show the full entrance arc.
-import puppeteer from 'puppeteer-core';
-import { mkdirSync } from 'node:fs';
 
-const CHROME = process.env.CHROME ??
+import { mkdirSync } from 'node:fs';
+import puppeteer from 'puppeteer-core';
+
+const CHROME =
+  process.env.CHROME ??
   '/docker/opt/customdata/meyo-runtime/p75097875-9ea2bb05cf60f71e/runtime/browser/chrome-linux64/chrome';
 const URL = process.env.URL ?? 'http://127.0.0.1:8810';
-const OUT = '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_presentation_v6';
+const OUT =
+  '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_presentation_v6';
 
 mkdirSync(OUT, { recursive: true });
 

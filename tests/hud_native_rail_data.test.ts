@@ -9,8 +9,8 @@
 // and assert where the new plates actually land: inside the rail, not under
 // the bars or the inventory, and with readable text drawn in them.
 
-import { describe, expect, it, beforeAll } from 'vitest';
-import { HudNative, type HudInput, type SlotView } from '../src/ui/hud_native';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { type HudInput, HudNative, type SlotView } from '../src/ui/hud_native';
 
 // The painter asks the document for its fonts; in node there are none, and
 // the code already guards `typeof document.fonts === 'undefined'` — it just
@@ -26,7 +26,15 @@ beforeAll(() => {
 // tests can assert on the same rects and glyphs the GPU would rasterize.
 // No behavioral logic is reimplemented here; it only records.
 class RecordingCtx {
-  ops: { op: string; text?: string; x?: number; y?: number; w?: number; h?: number; font?: string }[] = [];
+  ops: {
+    op: string;
+    text?: string;
+    x?: number;
+    y?: number;
+    w?: number;
+    h?: number;
+    font?: string;
+  }[] = [];
   private path: { x: number; y: number; w: number; h: number }[] = [];
 
   get canvas() {
@@ -88,13 +96,12 @@ class RecordingCtx {
     return { width: t.length * 6.5 };
   }
   createLinearGradient() {
-    const self = this;
     return { addColorStop() {} };
   }
   createRadialGradient() {
     return { addColorStop() {} };
   }
-  drawImage(img: unknown, x: number, y: number, w: number, h: number) {
+  drawImage(_img: unknown, x: number, y: number, _w: number, _h: number) {
     this.ops.push({ op: 'drawImage', x, y });
   }
   translate() {}
@@ -167,7 +174,13 @@ function baseInput(overrides?: Partial<HudInput['rail']>): HudInput {
       manaFlash: 0,
       meta: 'PRACTICE · 12:34',
       chips: [],
-      slots: [slot('P', 'Fortitude'), slot('Q', 'Shield Bash'), slot('W', 'Bulwark'), slot('E', 'Charge'), slot('R', 'Earthshatter')],
+      slots: [
+        slot('P', 'Fortitude'),
+        slot('Q', 'Shield Bash'),
+        slot('W', 'Bulwark'),
+        slot('E', 'Charge'),
+        slot('R', 'Earthshatter'),
+      ],
       inv: [
         { icon: null, initials: 'LS' },
         { icon: null, initials: 'BV' },
@@ -214,7 +227,10 @@ describe('rail data strip geometry (paint-driven)', () => {
     hud.paint(ctx as unknown as CanvasRenderingContext2D, baseInput());
     const texts = ctx.ops.filter((o) => o.op === 'text');
     for (const v of ['72', '15', '38', '30', '0.86', '345']) {
-      expect(texts.some((t) => t.text === v), `stat value ${v} painted`).toBe(true);
+      expect(
+        texts.some((t) => t.text === v),
+        `stat value ${v} painted`,
+      ).toBe(true);
     }
     // Rail bounds at 1280x720 scale 1: x 397..883, y 506..706.
     for (const t of texts) {
@@ -238,7 +254,9 @@ describe('rail data strip geometry (paint-driven)', () => {
       (o) => o.text === '4 / 1 / 2' && o.y !== undefined && o.y >= 620 && o.y <= 632,
     );
     // CS "CS 87": first glyph 'C' in the plate's sub line y ~640.
-    const csC = all.filter((o) => o.text === 'C' && o.y !== undefined && o.y >= 636 && o.y <= 646 && (o.x ?? 0) > 763);
+    const csC = all.filter(
+      (o) => o.text === 'C' && o.y !== undefined && o.y >= 636 && o.y <= 646 && (o.x ?? 0) > 763,
+    );
     expect(kda4.length, 'KDA line painted in the plate band').toBeGreaterThan(0);
     expect(csC.length, 'CS line painted in the plate band').toBeGreaterThan(0);
     // The plate lives in the right dead band: right of the inventory row
@@ -259,17 +277,21 @@ describe('rail data strip geometry (paint-driven)', () => {
     // letter tracking, so they arrive as single glyphs. Collect every
     // glyph drawn in the stat-cell band that is a label character, and
     // require all of them inside the chassis (x 397..883).
-    const LABEL_CHARS = new Set(['A','D','P','R','M','S']);
+    const LABEL_CHARS = new Set(['A', 'D', 'P', 'R', 'M', 'S']);
     const labels = ctx.ops.filter(
       (o) =>
         (o.op === 'text' || o.op === 'strokeText') &&
-        o.y !== undefined && o.y >= 680 && o.y <= 693 &&
+        o.y !== undefined &&
+        o.y >= 680 &&
+        o.y <= 693 &&
         LABEL_CHARS.has(o.text ?? ''),
     );
     // Six labels, letterpress x2: plenty of glyphs.
     expect(labels.length).toBeGreaterThanOrEqual(12);
     for (const l of labels) {
-      expect(l.x!, `label glyph ${l.text} at x=${l.x} outside the rail`).toBeGreaterThanOrEqual(397);
+      expect(l.x!, `label glyph ${l.text} at x=${l.x} outside the rail`).toBeGreaterThanOrEqual(
+        397,
+      );
       expect(l.x!, `label glyph ${l.text} at x=${l.x} outside the rail`).toBeLessThanOrEqual(883);
     }
   });
@@ -290,12 +312,16 @@ describe('rail data strip geometry (paint-driven)', () => {
     // Inventory sockets: x 517..763, y 657..693. Stat cells share that y
     // band by design (they flank the row) but must stay horizontally clear.
     const statTexts = ctx.ops.filter(
-      (o) => (o.op === 'text' || o.op === 'strokeText') && ['72', '15', '38', '30', '0.86', '345'].includes(o.text ?? ''),
+      (o) =>
+        (o.op === 'text' || o.op === 'strokeText') &&
+        ['72', '15', '38', '30', '0.86', '345'].includes(o.text ?? ''),
     );
     expect(statTexts.length).toBeGreaterThanOrEqual(6);
     for (const t of statTexts) {
       const inInventoryColumn = t.x! >= 517 && t.x! <= 763;
-      expect(inInventoryColumn, `stat text at x=${t.x} must not sit under the inventory`).toBe(false);
+      expect(inInventoryColumn, `stat text at x=${t.x} must not sit under the inventory`).toBe(
+        false,
+      );
     }
     // The cells' band is the inventory band (657..693): clear of the bars
     // (564..595) and the socket row (606..650).
@@ -316,12 +342,14 @@ describe('keycap rework (D3, paint-driven)', () => {
     // meta rides y ~550, the bars y 564..595).
     const inBand = ctx.ops.filter(
       (o) =>
-        (o.op === 'text' || o.op === 'strokeText') &&
-        o.y !== undefined && o.y >= 606 && o.y <= 650,
+        (o.op === 'text' || o.op === 'strokeText') && o.y !== undefined && o.y >= 606 && o.y <= 650,
     );
     const letters = inBand.filter((o) => ['Q', 'W', 'E', 'R'].includes(o.text ?? ''));
     for (const l of ['Q', 'W', 'E', 'R']) {
-      expect(letters.some((t) => t.text === l), `${l} keycap painted in the socket band`).toBe(true);
+      expect(
+        letters.some((t) => t.text === l),
+        `${l} keycap painted in the socket band`,
+      ).toBe(true);
     }
     // Sockets: x 516..764, y 606..650. Every keycap letter stays inside
     // its socket, above the bars (which end y 595) and above the
@@ -343,7 +371,8 @@ describe('keycap rework (D3, paint-driven)', () => {
     const ctx = new RecordingCtx();
     hud.paint(ctx as unknown as CanvasRenderingContext2D, baseInput());
     const inBand = ctx.ops.filter(
-      (o) => (o.op === 'text' || o.op === 'strokeText') && o.y !== undefined && o.y >= 606 && o.y <= 650,
+      (o) =>
+        (o.op === 'text' || o.op === 'strokeText') && o.y !== undefined && o.y >= 606 && o.y <= 650,
     );
     const letters = inBand.filter((o) => ['Q', 'W', 'E', 'R'].includes(o.text ?? ''));
     expect(letters.length).toBeGreaterThan(0);

@@ -42,9 +42,13 @@ export interface Rect {
   h: number;
 }
 
-export interface IconPainter {
-  (ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, s: number): void;
-}
+export type IconPainter = (
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  s: number,
+) => void;
 
 // ---------------------------------------------------------------------------
 // Text
@@ -87,7 +91,7 @@ export function drawText(
   setFont(ctx, o.font);
   const track = o.track ?? 0;
   const width = textWidth(ctx, text, track);
-  let cx = o.align === 'center' ? x - width / 2 : o.align === 'right' ? x - width : x;
+  const cx = o.align === 'center' ? x - width / 2 : o.align === 'right' ? x - width : x;
   ctx.save();
   ctx.textAlign = 'left';
   ctx.textBaseline = o.baseline ?? 'alphabetic';
@@ -176,12 +180,7 @@ export function cutPath(
   ctx.closePath();
 }
 
-export function diamond(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  r: number,
-): void {
+export function diamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.beginPath();
   ctx.moveTo(cx, cy - r);
   ctx.lineTo(cx + r, cy);
@@ -206,11 +205,7 @@ export interface PlateOpts {
 
 // The workhorse: one plate, drawn with the same four layers everywhere so
 // the eye reads a single forged chassis across rail, shop and end screen.
-export function plate(
-  ctx: CanvasRenderingContext2D,
-  r: Rect,
-  o: PlateOpts = {},
-): void {
+export function plate(ctx: CanvasRenderingContext2D, r: Rect, o: PlateOpts = {}): void {
   const cut = o.cut ?? 12;
   const corners = o.corners ?? [true, true, true, true];
   ctx.save();
@@ -415,7 +410,8 @@ export function drawArtLit(
     ctx.clip();
   }
   if (typeof ctx.filter === 'string') {
-    ctx.filter = saturate === 1 ? `brightness(${lift})` : `brightness(${lift}) saturate(${saturate})`;
+    ctx.filter =
+      saturate === 1 ? `brightness(${lift})` : `brightness(${lift}) saturate(${saturate})`;
   }
   ctx.drawImage(img, x, y, w, h);
   ctx.filter = 'none';
@@ -469,5 +465,8 @@ export function askForFonts(cb: () => void): void {
     document.fonts.load(`600 18px ${FONT_TITLE}`),
     document.fonts.load(`400 14px ${FONT_BODY}`),
   ];
-  void Promise.all(jobs).then(() => cb(), () => cb());
+  void Promise.all(jobs).then(
+    () => cb(),
+    () => cb(),
+  );
 }

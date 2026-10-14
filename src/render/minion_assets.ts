@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneRig } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Unit } from '../sim/unit';
-import type { MinionMesh } from './minion_shapes';
 import { measureScene, toLambert } from './champions/assets';
+import type { MinionMesh } from './minion_shapes';
 
 type MinionRole = 'melee' | 'ranged' | 'siege' | 'vanguard';
 type MinionVariant = 0 | 1;
@@ -52,7 +52,7 @@ const ROLE_FILE: Readonly<Record<MinionRole, readonly [string, string]>> = {
   vanguard: ['minion-d01.glb', 'minion-d02.glb'],
 };
 
-const TEAM_TINT: readonly number[] = [0xcddcff, 0xffd0c5];
+const _TEAM_TINT: readonly number[] = [0xcddcff, 0xffd0c5];
 const TEAM_RING: readonly number[] = [0x78abff, 0xff8f84];
 const GOBKIT_MINIONS_ENABLED =
   new URLSearchParams(window.location.search).get('candidateGobkitMinions') === '1';
@@ -87,7 +87,10 @@ function cloneMaterials(root: THREE.Object3D, teamColor: number): void {
   const tint = new THREE.Color(teamColor);
   root.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    if (!(mesh as { isMesh?: boolean }).isMesh && !(mesh as { isSkinnedMesh?: boolean }).isSkinnedMesh)
+    if (
+      !(mesh as { isMesh?: boolean }).isMesh &&
+      !(mesh as { isSkinnedMesh?: boolean }).isSkinnedMesh
+    )
       return;
     const convert = (material: THREE.Material): THREE.Material => {
       const base = material as THREE.MeshLambertMaterial;
@@ -118,7 +121,10 @@ function feetRing(color: number): THREE.Mesh {
   return ring;
 }
 
-async function loadTemplate(role: MinionRole, variant: MinionVariant): Promise<MinionTemplate | null> {
+async function loadTemplate(
+  role: MinionRole,
+  variant: MinionVariant,
+): Promise<MinionTemplate | null> {
   const key = keyOf(role, variant);
   const cached = templates.get(key);
   if (cached) return cached;
@@ -194,11 +200,7 @@ function buildVisual(
     deadLatched: false,
     update(dtMs, state) {
       if (!this.mixer || !template.clip) return;
-      const next: SegmentName = state.dead
-        ? 'dead'
-        : state.attacking
-          ? 'attack'
-          : 'idle';
+      const next: SegmentName = state.dead ? 'dead' : state.attacking ? 'attack' : 'idle';
       if (next !== this.segment) {
         this.segment = next;
         this.segmentMs = 0;
@@ -210,7 +212,7 @@ function buildVisual(
       const start = segment.from / FPS;
       const duration = (segment.to - segment.from + 1) / FPS;
       const local = segment.loop
-        ? ((this.segmentMs / 1000) % duration)
+        ? (this.segmentMs / 1000) % duration
         : Math.min(this.segmentMs / 1000, duration - 1 / FPS);
       this.mixer.setTime(start + local);
       if (!segment.loop && local >= duration - 1 / FPS) this.deadLatched = true;

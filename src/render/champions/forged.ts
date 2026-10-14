@@ -11,7 +11,13 @@ import { Quaternion, Vector3 } from 'three';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { DisplayPropKind, ForgedDisplay } from '../../sim/forge/display';
-import { type ChampionTemplate, measureScene, normalizeProp, sharpenWeaponMetal, toLambert } from './assets';
+import {
+  type ChampionTemplate,
+  measureScene,
+  normalizeProp,
+  sharpenWeaponMetal,
+  toLambert,
+} from './assets';
 import {
   type RemovedTravel,
   resolveForgedClips,

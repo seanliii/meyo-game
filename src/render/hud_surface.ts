@@ -57,7 +57,9 @@ export class HudSurface {
 
   // The painter runs against this surface's own raster. It is the only
   // thing that ever writes HUD pixels.
-  setPainter(painter: (ctx: CanvasRenderingContext2D, width: number, height: number) => void): void {
+  setPainter(
+    painter: (ctx: CanvasRenderingContext2D, width: number, height: number) => void,
+  ): void {
     this.painter = painter;
     this.markDirty();
   }

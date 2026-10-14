@@ -1,14 +1,17 @@
 // V6 capture: stage-based, each stage verifies hero-on-screen READ-ONLY before
 // shooting, closes any open modal first, and writes state JSON. Real inputs only.
-import puppeteer from 'puppeteer-core';
-import { mkdirSync, writeFileSync } from 'node:fs';
 
-const CHROME = process.env.CHROME ??
+import { mkdirSync, writeFileSync } from 'node:fs';
+import puppeteer from 'puppeteer-core';
+
+const CHROME =
+  process.env.CHROME ??
   '/docker/opt/customdata/meyo-runtime/p75097875-9ea2bb05cf60f71e/runtime/browser/chrome-linux64/chrome';
 const URL = process.env.URL ?? 'http://127.0.0.1:8801';
-const OUT = process.env.OUT ??
+const OUT =
+  process.env.OUT ??
   '/docker/opt/customdata/meyo-legion/verification/portable-services-replay/data/outputs/game_c9c9a9c87217_existing/mainline_compare/evidence/hero_hud_v6';
-const STAGE = process.env.STAGE ?? 'all';
+const _STAGE = process.env.STAGE ?? 'all';
 const TMPDIR = '/dev/shm/hero-hud-v6';
 const PROFILE = '/dev/shm/hero-hud-v6-profile';
 
@@ -44,9 +47,9 @@ async function clickButton(page, text) {
 async function modalOpen(page) {
   return page.evaluate(() => {
     const shop = document.querySelector('.hud-shop');
-    if (shop && shop.classList.contains('open')) return 'shop';
+    if (shop?.classList.contains('open')) return 'shop';
     const esc = document.querySelector('.hud-escape, .hud-end');
-    if (esc && esc.classList.contains('open')) return 'overlay';
+    if (esc?.classList.contains('open')) return 'overlay';
     return null;
   });
 }
@@ -67,19 +70,23 @@ async function closeModals(page) {
 async function heroScreen(page) {
   return page.evaluate(() => {
     const m = window.__match;
-    if (!m || !m.world || !m.renderer) return null;
+    if (!m?.world || !m.renderer) return null;
     const u = m.world.units.get(m.selfId);
     if (!u) return null;
     const bar = m.renderer.projectToScreen(u.pos.x, 2.5, u.pos.z);
     const feet = m.renderer.projectToScreen(u.pos.x, 0.2, u.pos.z);
     if (!bar || !feet) return { onScreen: false };
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const inside = (p, m0) =>
-      p.x > m0 && p.x < vw - m0 && p.y > 90 && p.y < vh - 160;
+    const vw = window.innerWidth,
+      vh = window.innerHeight;
+    const inside = (p, m0) => p.x > m0 && p.x < vw - m0 && p.y > 90 && p.y < vh - 160;
     return {
       onScreen: inside(bar, 120) && inside(feet, 80),
-      bar, feet, pos: { x: +u.pos.x.toFixed(1), z: +u.pos.z.toFixed(1) },
-      hp: Math.floor(u.hp), level: u.level, gold: Math.floor(u.gold),
+      bar,
+      feet,
+      pos: { x: +u.pos.x.toFixed(1), z: +u.pos.z.toFixed(1) },
+      hp: Math.floor(u.hp),
+      level: u.level,
+      gold: Math.floor(u.gold),
       championId: u.championId,
     };
   });
@@ -91,9 +98,14 @@ const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
   args: [
-    '--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader',
-    '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
-    `--user-data-dir=${PROFILE}`, '--window-size=1440,960', '--mute-audio',
+    '--no-sandbox',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
+    `--user-data-dir=${PROFILE}`,
+    '--window-size=1440,960',
+    '--mute-audio',
   ],
   defaultViewport: { width: 1440, height: 960 },
 });
@@ -102,26 +114,36 @@ const page = await browser.newPage();
 const problems = [];
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => {
-  if (m.type() === 'error' && !/\b401\b/.test(m.text())) problems.push(`[console.error] ${m.text()}`);
+  if (m.type() === 'error' && !/\b401\b/.test(m.text()))
+    problems.push(`[console.error] ${m.text()}`);
 });
 
 await page.goto(URL, { waitUntil: 'load', timeout: 45000 });
-await waitFor(page,
+await waitFor(
+  page,
   `[...document.querySelectorAll('button')].some((e) => (e.textContent || '').toLowerCase().includes('practice alone against bots'))`,
-  'home actions');
+  'home actions',
+);
 await clickButton(page, 'practice alone against bots');
-await waitFor(page,
+await waitFor(
+  page,
   `[...document.querySelectorAll('button')].some((e) => (e.textContent || '').includes('Lock in'))`,
-  'champion select');
+  'champion select',
+);
 await clickButton(page, 'Korrath, the Bulwark');
 await sleep(400);
 await clickButton(page, 'Lock in');
 console.log('locked in, waiting for match load');
 
-await waitFor(page, () => {
-  const m = window.__match;
-  return !!(m && m.world && m.world.units && m.world.units.get(m.selfId));
-}, 'player unit exists', 60000);
+await waitFor(
+  page,
+  () => {
+    const m = window.__match;
+    return !!m?.world?.units?.get(m.selfId);
+  },
+  'player unit exists',
+  60000,
+);
 // model-wait gate: champion GLB template must be instantiated
 await sleep(14000);
 await closeModals(page);
@@ -131,7 +153,7 @@ console.log('hero probe:', JSON.stringify(hero));
 writeFileSync(`${OUT}/probe_spawn.json`, JSON.stringify(hero, null, 2));
 
 // ---- Shot 1: spawn (hero MUST be on screen) ----
-if (hero && hero.onScreen) {
+if (hero?.onScreen) {
   await page.screenshot({ path: `${OUT}/v6_spawn_20261010.png` });
   console.log('saved v6_spawn');
 } else {
@@ -167,7 +189,7 @@ await sleep(1500);
 await closeModals(page);
 const hero3 = await heroScreen(page);
 console.log('closeup probe:', JSON.stringify(hero3));
-if (hero3 && hero3.onScreen) {
+if (hero3?.onScreen) {
   await page.screenshot({ path: `${OUT}/v6_hero_closeup_20261010.png` });
   console.log('saved v6_hero_closeup');
   // 2x zoomed crop around the hero for the critic: crop via clip on full-res
@@ -178,7 +200,8 @@ if (hero3 && hero3.onScreen) {
   const clip = {
     x: Math.max(0, Math.min(vp.width - S, cx - S / 2)),
     y: Math.max(0, Math.min(vp.height - S, cy - S / 2)),
-    width: S, height: S,
+    width: S,
+    height: S,
   };
   await page.screenshot({ path: `${OUT}/v6_hero_closeup_crop_20261010.png`, clip });
   console.log('saved v6_hero_closeup_crop');
@@ -200,10 +223,12 @@ await sleep(1200);
 await clickButton(page, 'Guard Plate');
 await sleep(600);
 const buyBtn = await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button')].find((e) =>
-    (e.textContent || '').trim().toLowerCase() === 'buy');
+  const b = [...document.querySelectorAll('button')].find(
+    (e) => (e.textContent || '').trim().toLowerCase() === 'buy',
+  );
   if (!b) return false;
-  b.click(); return true;
+  b.click();
+  return true;
 });
 console.log('buy clicked:', buyBtn);
 await sleep(800);
@@ -237,8 +262,11 @@ const state = await page.evaluate(() => {
   const u = m.world.units.get(m.selfId);
   return {
     pos: { x: +u.pos.x.toFixed(1), z: +u.pos.z.toFixed(1) },
-    level: u.level, gold: Math.floor(u.gold), items: u.items,
-    abilityRanks: u.abilityRanks, hp: Math.floor(u.hp),
+    level: u.level,
+    gold: Math.floor(u.gold),
+    items: u.items,
+    abilityRanks: u.abilityRanks,
+    hp: Math.floor(u.hp),
     minionsNear: [...m.world.units.values()].filter(
       (x) => x.kind === 'minion' && Math.hypot(x.pos.x - u.pos.x, x.pos.z - u.pos.z) < 30,
     ).length,
