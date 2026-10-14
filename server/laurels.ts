@@ -20,8 +20,9 @@ import { playedByHand, seatWay } from './ways';
 export const STARTER_COLLECTION: readonly string[] = [
   'dain',
   'sylra',
-  'vesk',
-  'torv',
+  'ashvyn',
+  'maera',
+  'fenn',
 ];
 
 // Hand-set, per champion, moved in either direction whenever the
@@ -32,9 +33,7 @@ export const STARTER_COLLECTION: readonly string[] = [
 export const CHAMPION_PRICES: Readonly<Record<string, number>> = {
   korrath: 900,
   vesk: 900,
-  fenn: 500,
-  ashvyn: 500,
-  maera: 500,
+  torv: 500,
   elowen: 500,
   rhoka: 500,
 };
