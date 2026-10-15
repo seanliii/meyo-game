@@ -14,7 +14,6 @@ import { appNav } from '../game/nav';
 import { type AuthedAccount, buildAuthForm } from './auth';
 import type { DiscordResult } from './discord_entry';
 import { startBackdrop } from './home_backdrop';
-import { CONTRIBUTE_LEAD, CONTRIBUTE_TITLE, CONTRIBUTE_WAYS } from './landing_contribute';
 import { mountEmbers } from './landing_embers';
 import { mountLandingLadder } from './landing_ladder';
 import {
@@ -27,13 +26,11 @@ import {
 } from './landing_modes';
 import { mountPresence } from './landing_presence';
 import { revealOnScroll } from './landing_reveal';
-import { DISCORD, PRIVACY } from './links';
 import { el, ensureMenuCss } from './menu';
 import { allNews, countdownText, dayText, isPinned, newestOf } from './news';
 import { newsImageUrl } from './news_images';
 import { openNews } from './news_section';
-import { buildPage, ensurePageCss, mountLiveStats, navLink } from './page';
-import { buildRepoLink } from './repo_link';
+import { buildPage, ensurePageCss, mountLiveStats } from './page';
 
 // Only what the landing page adds to the shared chrome: the bento, which
 // is the home's row of tiles as a visitor can have it.
@@ -410,8 +407,6 @@ export function showLanding(
     const stopEmbers = mountEmbers(root);
     let stopReveal = (): void => {};
     container.appendChild(root);
-    // Arriving to sign up: straight to the form. The cards are built
-    // below, and exist by the time the frame is painted.
     if (intent === 'register') {
       requestAnimationFrame(() => {
         root.querySelector('.pg-cards')?.scrollIntoView({ block: 'start' });
@@ -433,22 +428,6 @@ export function showLanding(
       root.querySelector('.pg-cards')?.scrollIntoView({ behavior: 'smooth' });
     });
     bar.links.appendChild(toPlay);
-    // The other verb. "Source" on the right names a place and asks
-    // nothing; this one scrolls to the section that actually makes the
-    // case, because being open is the thing this game has that the genre
-    // does not and a five letter nav link was hiding it.
-    const toGive = el('button', '', 'Contribute');
-    toGive.type = 'button';
-    toGive.addEventListener('click', () => {
-      root.querySelector('.pg-give')?.scrollIntoView({ behavior: 'smooth' });
-    });
-    bar.links.appendChild(toGive);
-    bar.right.appendChild(navLink('Discord', DISCORD));
-    // The repository, as the one gold thing in the bar (ui/repo_link.ts).
-    bar.right.appendChild(buildRepoLink('pill', 'GitHub'));
-    // Last, and quiet, but on the page a first-time visitor actually
-    // reads: a site that counts anything owes them somewhere to look.
-    bar.right.appendChild(navLink('Privacy', PRIVACY));
 
     // --- hero: the lockup, and the copy beside it ---
     // The name is art here rather than text: the lockup carries the crest
@@ -474,12 +453,11 @@ export function showLanding(
           'jungle camps and fog of war. Nothing to install.',
       ),
     );
-    // Under the tagline: the repository, big, and the count beside it.
-    // The genre hands you a game; this one hands you the source, and the
-    // front door says so before it asks for anything.
+    // Under the tagline: the live count. No repository link here: this
+    // deployment shows only the game, never the upstream author's home.
     const cta = el('div', 'pg-hero-cta');
     const stats = el('div', 'pg-stats');
-    cta.append(buildRepoLink('hero', 'Star on GitHub'), stats);
+    cta.append(stats);
     copy.appendChild(cta);
     mountLiveStats(stats);
     hero.append(title, copy);
@@ -624,26 +602,9 @@ export function showLanding(
       root.querySelector('.pg-cards')?.scrollIntoView({ behavior: 'smooth' });
     });
 
-    // --- and the thing the genre does not offer ---
-    const give = el('section', 'pg-give');
-    give.append(
-      el('h2', '', CONTRIBUTE_TITLE),
-      el('p', '', CONTRIBUTE_LEAD),
-      buildRepoLink('wide', 'Open the repository'),
-    );
-    const giveRow = el('div', 'pg-give-row');
-    for (const way of CONTRIBUTE_WAYS) {
-      const card = el('article', 'pg-give-way');
-      const link = el('a', '', way.cta) as HTMLAnchorElement;
-      link.href = way.href;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      card.append(el('h3', '', way.title), el('p', '', way.line), link);
-      giveRow.appendChild(card);
-    }
-    give.appendChild(giveRow);
-    inner.appendChild(give);
-    // A screen down, so it arrives when scrolled to rather than unseen.
-    stopReveal = revealOnScroll(root, [give]);
+    // --- and nothing else: no contribution band, no repository hand-off.
+    // This deployment is the game itself; the visitor's path ends at the
+    // doors above. ---
+    stopReveal = (): void => {};
   });
 }

@@ -7,7 +7,7 @@
 // decides layout, so the same form could sit anywhere.
 
 import { trackStep } from '../net/stats';
-import { buildDiscordEntry, type DiscordResult } from './discord_entry';
+import type { DiscordResult } from './discord_entry';
 import { el, ensureMenuCss } from './menu';
 
 const CSS = `
@@ -147,14 +147,15 @@ export async function requestReset(email: string): Promise<string | null> {
 // not a way in, it is a way to be sent one, which is why it has no tab of
 // its own and leaves by the same link that reached it.
 //
-// `discordResult` is what a round trip through Discord came back with, if
-// this page load came from one (ADR 0009). The form only ever shows it;
-// what was linked, if anything, is the server's business. `initialMode`
+// `discordResult` is accepted for signature compatibility with callers
+// that still pass it (ADR 0009); this deployment shows no Discord door,
+// so it is deliberately unused. `initialMode`
 // is the tab the form opens on: register when the visitor arrives having
 // taken the account offer at the end of a practice match, sign in
 // otherwise.
 export function buildAuthForm(
   onSignedIn: (account: AuthedAccount) => void,
+  // biome-ignore lint/correctness/noUnusedVariables: signature kept for callers (ADR 0009)
   discordResult: DiscordResult | null = null,
   initialMode: 'login' | 'register' = 'login',
 ): HTMLElement {
@@ -192,11 +193,9 @@ export function buildAuthForm(
   const note = el('p', 'auth-note');
   const alt = el('button', 'auth-alt', 'Forgot your password?');
 
-  // The Discord door (ADR 0009). It hides itself on a server with no
-  // Discord application, and the 'forgot' mode hides it here: a password
-  // reset is about the password, and the door would only distract.
+  // The Discord door (ADR 0009). Not shown in this deployment: the
+  // visitor's only doors are the game's own.
   const discordBox = el('div', 'auth-discord');
-  discordBox.appendChild(buildDiscordEntry(discordResult));
 
   root.append(tabs, name, email, password, error, go, alt, note, discordBox);
 

@@ -1,32 +1,24 @@
-// The two links that leave the game, and the one rule about when the
-// Discord welcome shows. Small, but the failure mode is expensive: a
-// truncated or placeholder invite ships to three screens at once and
-// nothing in the client can tell that it is dead.
+// The one outward link this deployment keeps: the deployer's own
+// repository, never the upstream author's. The Discord invite is gone
+// from the UI (no Discord door, no welcome strip), so DISCORD is empty
+// and nothing in the client may show it.
 
-import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { welcomesToDiscord, welcomeWords } from '../src/ui/discord_welcome';
 import { DISCORD, PRIVACY, REPO } from '../src/ui/links';
 
 describe('the outward links', () => {
-  it('point at a real invite and a real repository', () => {
-    expect(DISCORD).toMatch(/^https:\/\/discord\.gg\/[A-Za-z0-9]{6,}$/);
-    expect(REPO).toBe('https://github.com/killian01/claude-of-legends');
+  it('point at the deployer repository, not the upstream author', () => {
+    expect(REPO).toBe('https://github.com/seanliii/meyo-game');
     // The page has to be reachable from the game, or the promise in it is
     // only made to people who read the source.
     expect(PRIVACY).toBe(`${REPO}/blob/main/PRIVACY.md`);
   });
 
-  // The invite is written in four places the client cannot see: the README
-  // badge and its nav, the closing invitation, and the issue chooser. An
-  // invite that gets revoked and reissued is exactly the change that
-  // updates the one the tests read and leaves the other four dead.
-  it('spell the same invite everywhere the repository says Discord', () => {
-    const out = execFileSync('git', ['grep', '-hoI', 'https://discord\\.gg/[A-Za-z0-9]*'], {
-      encoding: 'utf8',
-    });
-    const found = [...new Set(out.split('\n').filter(Boolean))];
-    expect(found).toEqual([DISCORD]);
+  it('carries no Discord invite: the UI shows none', () => {
+    // Empty means the landing bar, the auth form and the account drawer
+    // have nothing to render; the button and the welcome are gone.
+    expect(DISCORD).toBe('');
   });
 });
 

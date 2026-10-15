@@ -14,7 +14,6 @@ import { openAcademy } from './academy';
 import { openAccountDrawer } from './account_drawer';
 import type { AuthedAccount } from './auth';
 import type { DiscordResult } from './discord_entry';
-import { buildDiscordWelcome } from './discord_welcome';
 import { buildEmailNotice, type ConfirmResult } from './email_status';
 import { openForgeEditor } from './forge_editor';
 import { openGallery } from './gallery';
@@ -104,7 +103,9 @@ export function showHome(
   // Set only on the page load a confirmation link redirected back to.
   justConfirmed: ConfirmResult | null = null,
   // Set only on the page load a round trip through Discord came back on
-  // (ADR 0009); 'created' is the one that earns a welcome.
+  // (ADR 0009). Accepted for signature compatibility; this deployment
+  // shows no Discord welcome.
+  // biome-ignore lint/correctness/noUnusedVariables: signature kept for callers (ADR 0009)
   discordResult: DiscordResult | null = null,
   // Open the Academy on this bot at once: the way back from a replay it
   // handed over.
@@ -301,8 +302,6 @@ export function showHome(
     // way of the tile somebody came here to press.
     const notice = buildEmailNotice(account, justConfirmed);
     if (notice) col.appendChild(notice);
-    const welcome = buildDiscordWelcome(discordResult);
-    if (welcome) col.appendChild(welcome);
 
     // --- play ---
     const onTile = (tile: PlayTile): void => {
