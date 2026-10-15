@@ -232,6 +232,11 @@ const CSS = `
 .pg-news-words small { font-size: 11px; color: #8ea4c4; text-transform: uppercase; letter-spacing: 0.6px; }
 .pg-news-words b { font-size: 13.5px; color: #fff; }
 .pg-news-host { position: fixed; inset: 0; z-index: 40; }
+/* A static deployment: the account form is disabled and a note says why. */
+.pg-form-offline { opacity: 0.62; }
+.pg-form-offline-note { margin: 10px 0 0; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid rgba(232, 196, 108, 0.45); background: rgba(232, 196, 108, 0.1);
+  color: #e6d7a8; font-size: 12px; line-height: 1.55; }
 
 /* The contribution band, under the two ways in. It is the one section
    here that is not about playing, so it is set apart rather than made
@@ -523,6 +528,28 @@ export function showLanding(
     const aloneBtn = el('button', 'pg-alone', PRACTICE_ALONE_CALL);
     aloneBtn.type = 'button';
     aloneBtn.addEventListener('click', () => finish({ kind: 'offline' }));
+    // A static deployment (GitHub Pages) has no game server: the account
+    // form would only fail after the visitor typed everything. Detect it
+    // once, say so, disable the form and point the doors at the offline
+    // match, which needs none (GITHUB_DEPLOY.md).
+    void fetch('/api/public/landing')
+      .then((r) => r.ok)
+      .catch(() => false)
+      .then((hasServer) => {
+        if (hasServer) return;
+        formPanel.classList.add('pg-form-offline');
+        const note = el('p', 'pg-form-offline-note');
+        note.textContent =
+          'This deployment has no game server: accounts, matchmaking and ' +
+          'saving are not available here. The offline match below needs none.';
+        formPanel.appendChild(note);
+        for (const input of formPanel.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+          'input, .menu-btn, .auth-tab, .auth-alt',
+        )) {
+          input.disabled = true;
+        }
+        playBtn.addEventListener('click', () => finish({ kind: 'offline' }));
+      });
     // The painting this card was missing. The heading above it says what
     // it is, so the picture is decoration and carries no label of its own.
     const tryArt = el('img', '');
