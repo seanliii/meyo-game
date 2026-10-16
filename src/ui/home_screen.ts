@@ -60,13 +60,7 @@ function ensureCss(): void {
 
 // The sections of the bar, which are also their addresses (#ladder): the
 // entry point reads the one a reload or a shared link names.
-export const HOME_SECTION_KEYS = [
-  'ladder',
-  'academy',
-  'forge',
-  'gallery',
-  'champions',
-] as const;
+export const HOME_SECTION_KEYS = ['ladder', 'academy', 'forge', 'gallery', 'champions'] as const;
 export type HomeSectionKey = (typeof HOME_SECTION_KEYS)[number];
 
 export interface HomeChoice {
