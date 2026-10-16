@@ -1577,7 +1577,7 @@ export class Hud {
     this.nudgeEl.append(nudgeWords, nudgeClose);
     this.nudgeEl.addEventListener('click', () => {
       this.endNudge();
-      if (!this.escapeOverlay.classList.contains('open')) this.toggleEscapeMenu();
+      if (!this.escapeOpen) this.toggleEscapeMenu();
       this.pauseFeedback.reveal(!coarsePointer);
     });
 
@@ -2061,6 +2061,20 @@ export class Hud {
       }
     }
     this.shopOpen = open;
+    // The painter and the hit test read view.shop.open (hud_native.ts):
+    // leave it true after a close and the shop stays painted, keeps
+    // swallowing every click, and the next P/ESC only re-opens it or pulls
+    // up the pause menu over the stale window. The view must walk in
+    // lockstep with the state, so the first close frame is the last one
+    // the shop paints.
+    this.view.shop.open = open;
+    if (open) {
+      const u = this.world.units.get(this.selfId);
+      if (u) this.refreshShopView(u);
+    } else {
+      this.view.shop.detail = null;
+      this.view.shop.hover = null;
+    }
     this.surface.setWindowOpen(open || this.endOpen);
     if (!open) {
       this.native.shopScroll = 0;
@@ -2113,8 +2127,13 @@ export class Hud {
 
   // A modal overlay is up (the pause menu or the end screen): what lives
   // outside the HUD stands down, like it does for the shop.
+  // This is the ONLY writer of escapeOverlay's class: setShopOpen above
+  // clears escapeOpen without it, and a menu left display:flex under the
+  // shop showed through the moment the shop closed - the "Esc opens a
+  // settings menu instead of closing the shop" bug.
   private syncOverlay(): void {
     this.rootEl.classList.toggle('overlay-open', this.escapeOpen || this.endOpen);
+    this.escapeOverlay.classList.toggle('open', this.escapeOpen);
     // The end screen's one element (the feedback box) is revealed with it.
     this.endFeedbackHost.classList.toggle('open', this.endOpen);
     this.surface.setWindowOpen(this.shopOpen || this.endOpen);
@@ -2139,7 +2158,7 @@ export class Hud {
   }
 
   toggleEscapeMenu(): void {
-    this.escapeOverlay.classList.toggle('open');
+    this.escapeOpen = !this.escapeOpen;
     this.syncOverlay();
   }
 

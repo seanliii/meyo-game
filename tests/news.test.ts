@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  allNews,
   countdownText,
   DAY_MS,
   dayText,
@@ -17,14 +18,15 @@ import {
   newestOf,
   orderNews,
 } from '../src/ui/news';
-import { NEWS, NEWS_DESTINATIONS, type NewsEntry } from '../src/ui/news_entries';
+import { NEWS_DESTINATIONS, type NewsEntry } from '../src/ui/news_entries';
 import { newsImageUrl } from '../src/ui/news_images';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('the table', () => {
   it('has entries, dated as UTC days, newest first', () => {
-    expect(NEWS.length).toBeGreaterThan(0);
+    const NEWS = allNews();
+    if (NEWS.length === 0) return; // 已下架新闻,空表不再断言
     let last = Number.POSITIVE_INFINITY;
     for (const e of NEWS) {
       expect(e.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -36,6 +38,7 @@ describe('the table', () => {
   });
 
   it('names every entry once, with something to read', () => {
+    const NEWS = allNews();
     const titles = new Set<string>();
     for (const e of NEWS) {
       expect(e.title.trim().length).toBeGreaterThan(0);
@@ -47,6 +50,7 @@ describe('the table', () => {
   });
 
   it('is plain text: no dash, no emoji, no URL', () => {
+    const NEWS = allNews();
     // The project's own rule on dashes and emojis, and a link is a
     // destination inside the site, never a URL in the prose.
     for (const e of NEWS) {
@@ -59,6 +63,7 @@ describe('the table', () => {
   });
 
   it('has every image it names in the build, hashed like an asset', () => {
+    const NEWS = allNews();
     // The pictures are assets of the bundle (src/ui/news_images.ts), so a
     // replaced one reaches every browser at once; a name the build does
     // not carry would be a broken picture on the page.
@@ -72,6 +77,7 @@ describe('the table', () => {
   });
 
   it('links only where the page can go', () => {
+    const NEWS = allNews();
     for (const e of NEWS) {
       if (e.link === undefined) continue;
       expect(NEWS_DESTINATIONS).toContain(e.link.to);
@@ -80,6 +86,7 @@ describe('the table', () => {
   });
 
   it('gives an event a time that parses', () => {
+    const NEWS = allNews();
     for (const e of NEWS) {
       if (e.at === undefined) continue;
       expect(Number.isNaN(Date.parse(e.at))).toBe(false);

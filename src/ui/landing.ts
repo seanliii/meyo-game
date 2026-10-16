@@ -440,7 +440,7 @@ export function showLanding(
     // because the page's heading is the game's name either way.
     const logo = el('img', '');
     logo.src = '/logo.webp';
-    logo.alt = 'Claude of Legends';
+    logo.alt = 'Legends';
     logo.width = 960;
     logo.height = 1181;
     logo.decoding = 'async';

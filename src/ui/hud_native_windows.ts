@@ -564,6 +564,7 @@ export function paintShop(
     bottom: '#0b1018',
     rim: hoverClose ? 'rgba(220,236,255,0.6)' : 'rgba(150,180,216,0.35)',
   });
+  // Esc closes the shop too; the keycap only needs to name one of them.
   drawText(ctx, 'CLOSE (P)', L.close.x + L.close.w / 2, L.close.y + L.close.h / 2 + 4 * k, {
     font: `600 ${11 * k}px ${FONT_BODY}`,
     fill: '#dbe7f6',

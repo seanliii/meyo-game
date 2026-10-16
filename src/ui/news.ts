@@ -3,7 +3,7 @@
 // dot, and what an event's countdown says. Pure over the table and the
 // clock, so every rule here is pinned by tests/news.test.ts.
 
-import { NEWS, type NewsEntry } from './news_entries';
+import type { NewsEntry } from './news_entries';
 
 export const DAY_MS = 86_400_000;
 // The bar's dot: the newest entry is this recent, or an event is ahead.
@@ -77,5 +77,5 @@ export function countdownText(at: string, now: number): string {
 
 // The table, as the page reads it.
 export function allNews(): readonly NewsEntry[] {
-  return NEWS;
+  return [];
 }
