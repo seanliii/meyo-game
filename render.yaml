@@ -18,7 +18,7 @@ services:
     runtime: node
     plan: free
     branch: deploy-render
-    buildCommand: echo "prebuilt branch: nothing to build"
+    buildCommand: echo prebuilt-nothing-to-build
     startCommand: node dist-server/server.cjs
     healthCheckPath: /api/public/build
     envVars:
