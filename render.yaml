@@ -1,0 +1,32 @@
+# Render Blueprint: the full game server, prebuilt.
+#
+# The deploy-render branch carries dist/ (the client) and dist-server/
+# (a self-contained server bundle, no node_modules at runtime), both built
+# and committed by the maintainer. The free instance has 512 MB, which a
+# vite build can overrun, so nothing is built here: the service only starts
+# node with the committed bundle. Node 22 is required for node:sqlite.
+#
+# Free-tier notes (as of 2026-10): the service sleeps after ~15 minutes
+# without traffic and wakes in ~30 s on the next request; the disk is
+# ephemeral, so accounts and match records live until the next restart
+# (offline practice needs neither). Everything else - accounts, online
+# matchmaking, WebSocket matches - works for real.
+
+services:
+  - type: web
+    name: meyo-game
+    runtime: node
+    plan: free
+    branch: deploy-render
+    buildCommand: echo "prebuilt branch: nothing to build"
+    startCommand: node dist-server/server.cjs
+    healthCheckPath: /api/public/build
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATA_DIR
+        value: /tmp/meyo-data
