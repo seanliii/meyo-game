@@ -330,7 +330,7 @@ async function api<T>(path: string, body?: unknown): Promise<Outcome<T>> {
     );
     return (await res.json()) as Outcome<T>;
   } catch {
-    return { ok: false, error: 'the server did not answer' };
+    return { ok: false, error: '服务器没有响应' };
   }
 }
 
@@ -763,7 +763,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
         ),
       );
       btn.addEventListener('click', () => {
-        if (dirty && !window.confirm('Discard the unsaved changes on this bot?')) return;
+        if (dirty && !window.confirm('放弃该机器人未保存的修改？')) return;
         select(b);
       });
       list.append(btn);
@@ -773,7 +773,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
     const make = el('button', `ac-btn wide${creating || bots.length === 0 ? ' primary' : ''}`);
     make.textContent = 'New bot';
     make.addEventListener('click', () => {
-      if (dirty && !window.confirm('Discard the unsaved changes on this bot?')) return;
+      if (dirty && !window.confirm('放弃该机器人未保存的修改？')) return;
       startNew();
     });
     list.append(make);
@@ -967,7 +967,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
     } else {
       const b = el('button', 'ac-btn', 'Make another bot');
       b.addEventListener('click', () => {
-        if (dirty && !window.confirm('Discard the unsaved changes on this bot?')) return;
+        if (dirty && !window.confirm('放弃该机器人未保存的修改？')) return;
         startNew();
       });
       right.append(b);
@@ -1305,7 +1305,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
   function playbookPanel(def: PlaybookDef): HTMLElement {
     // The play list.
     const list = el('div', 'ac-panel');
-    list.append(el('h3', '', 'The playbook'));
+    list.append(el('h3', '', '战术手册'));
     list.append(
       el(
         'p',
@@ -1337,7 +1337,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
   // live queue beside the Arena it feeds.
   function playPanel(bot: BotView): HTMLElement {
     const panel = el('div', 'ac-panel');
-    panel.append(el('h3', '', 'Ranked'));
+    panel.append(el('h3', '', '排位'));
     const sw = el('label', 'ac-switch');
     const box = el('input', '') as HTMLInputElement;
     box.type = 'checkbox';
@@ -1372,7 +1372,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
       const queue = el('button', 'ac-btn', 'Queue with this bot');
       queue.title = 'The live queue: pick this bot at champion select, then coach it from the bar';
       queue.addEventListener('click', () => {
-        if (dirty && !window.confirm('Discard the unsaved changes on this bot?')) return;
+        if (dirty && !window.confirm('放弃该机器人未保存的修改？')) return;
         close();
         opts.onPlay?.();
       });
@@ -1477,7 +1477,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
 
   function kitPanel(bot: BotView, def: PlaybookDef): HTMLElement {
     const panel = el('div', 'ac-panel');
-    panel.append(el('h3', '', 'The kit'));
+    panel.append(el('h3', '', '技能组'));
     panel.append(
       el(
         'p',
@@ -1501,10 +1501,10 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
     const home = homeLane(champ?.role);
     for (const [value, label] of [
       ['home', home ? `home lane (${home} lane)` : 'home lane (any)'],
-      ['top', 'top lane'],
-      ['mid', 'mid lane'],
-      ['bot', 'bot lane'],
-      ['jungle', 'the forest'],
+      ['top', '上路'],
+      ['mid', '中路'],
+      ['bot', '下路'],
+      ['jungle', '野区'],
     ] as const) {
       const o = document.createElement('option');
       o.value = value;
@@ -1976,9 +1976,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
     );
     const log = el('div', 'ac-chatlog');
     if (chat.length === 0 && !coaching) {
-      log.append(
-        el('div', 'ac-sub', chatLoading ? 'Opening the conversation...' : 'No messages yet.'),
-      );
+      log.append(el('div', 'ac-sub', chatLoading ? 'Opening the conversation...' : '还没有消息。'));
     }
     for (const turn of chat) {
       const bubble = el('div', `ac-bubble ${turn.role === 'user' ? 'user' : 'ai'}`, turn.bubble);
@@ -2126,7 +2124,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
     deepBox.append(deepCb, document.createTextNode('Deep rework (slower, for a rewrite)'));
     opts.append(deepBox);
     if (chat.length > 0 && !coaching) {
-      const clear = el('button', 'ac-btn mini', 'Start over');
+      const clear = el('button', 'ac-btn mini', '重新开始');
       clear.title = 'Forget this conversation (the play list stays)';
       clear.addEventListener('click', () => {
         chat.length = 0;
@@ -2149,7 +2147,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
   // house bots here, the series, the newest entry's line, the Record.
   function sparPanel(bot: BotView, def: PlaybookDef): HTMLElement {
     const sparBox = el('div', 'ac-panel ac-spar');
-    sparBox.append(el('h3', '', 'Sparring'));
+    sparBox.append(el('h3', '', '切磋'));
     sparBox.append(
       el(
         'p',
@@ -2361,7 +2359,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
   // The Arena, now: one rated match on demand for a ranked bot.
   function arenaPanel(bot: BotView): HTMLElement {
     const box = el('div', 'ac-panel');
-    box.append(el('h3', '', 'The Arena'));
+    box.append(el('h3', '', '竞技场'));
     box.append(
       el(
         'p',
@@ -2385,7 +2383,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
       'button',
       'ac-btn primary',
       arenaRunning
-        ? 'Playing in the Arena...'
+        ? '正在竞技场对局…'
         : `Play now, ranked${arena && arena.left !== null ? ` (${arena.left} left today)` : ''}`,
     ) as HTMLButtonElement;
     arenaBtn.disabled =
@@ -2415,7 +2413,7 @@ export function openAcademy(container: HTMLElement, opts: AcademyOptions = {}): 
         const mine = r.seats.find((s) => s.botId === bot.id);
         arenaResult = {
           text:
-            (r.winner === 0 ? 'Won' : r.winner === 1 ? 'Lost' : 'No winner') +
+            (r.winner === 0 ? 'Won' : r.winner === 1 ? 'Lost' : '未分胜负') +
             ` after ${fmtSeconds(r.ticks)}` +
             (r.rated && mine
               ? `, ${mine.delta >= 0 ? '+' : ''}${mine.delta} Arena rating (now ${mine.rating})`

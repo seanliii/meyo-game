@@ -142,7 +142,7 @@ const ASCENDANT_BODY: CreatureBody = {
 export const CREATURES: Record<CreatureId, CreatureDef> = {
   pyrefang: {
     id: 'pyrefang',
-    name: 'Pyrefang',
+    name: '燎牙',
     ring: 'bot',
     firstRiseS: 240,
     returnS: 180,
@@ -152,7 +152,7 @@ export const CREATURES: Record<CreatureId, CreatureDef> = {
   },
   voidmaul: {
     id: 'voidmaul',
-    name: 'Voidmaul',
+    name: '虚锤',
     ring: 'top',
     firstRiseS: 390,
     returnS: 180,

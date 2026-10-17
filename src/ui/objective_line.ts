@@ -86,7 +86,7 @@ export function favorChips(stacks: FavorStacks): FavorChip[] {
 
 // What the announcement says when a favor is claimed.
 export function favorClaimText(creature: 'pyrefang' | 'voidmaul', aspect: AspectId): string {
-  return `${CREATURES[creature].name}'s favor: ${ASPECTS[aspect].name}`;
+  return `${CREATURES[creature].name} 的庇佑：${ASPECTS[aspect].name}`;
 }
 
 // What the Wrath's chip says while a team holds it: what it does and how

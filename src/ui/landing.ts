@@ -440,7 +440,7 @@ export function showLanding(
     // because the page's heading is the game's name either way.
     const logo = el('img', '');
     logo.src = '/logo.webp';
-    logo.alt = 'Legends';
+    logo.alt = '传奇对决';
     logo.width = 960;
     logo.height = 1181;
     logo.decoding = 'async';
@@ -479,7 +479,7 @@ export function showLanding(
     // paintings do that, and the page is not a manual.
     const online = el('section', 'pg-card gold');
     online.append(
-      el('h2', '', 'Create a free account'),
+      el('h2', '', '创建免费账号'),
       el('p', '', 'It keeps your rating and your record, and opens these.'),
     );
     // The three the home stands at full height, wearing the paintings the
@@ -560,8 +560,8 @@ export function showLanding(
     const tryShot = el('div', 'pg-try');
     tryShot.appendChild(tryArt);
     offline.append(
-      // "Or try it first" while it stood second; stacked it stands first
-      // now, and a heading that begins with "Or" has nothing to follow.
+      // "或先试玩一把" while it stood second; stacked it stands first
+      // now, and a heading that begins with "或" has nothing to follow.
       el('h2', '', 'Play now'),
       el('p', '', PLAY_NOW_LINE),
       tryShot,

@@ -59,7 +59,7 @@ export function buildSettingsPanel(): HTMLElement {
   const row = document.createElement('div');
   row.className = 'set-row';
   const lab = document.createElement('label');
-  lab.textContent = 'Announcer';
+  lab.textContent = '语音播报';
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.checked = s.announcer;
@@ -78,11 +78,11 @@ function touchRow(value: 'thumbs' | 'tap'): HTMLElement {
   const row = document.createElement('div');
   row.className = 'set-row';
   const lab = document.createElement('label');
-  lab.textContent = 'Touch controls';
+  lab.textContent = '触屏操作';
   const select = document.createElement('select');
   for (const [v, text] of [
-    ['thumbs', 'Thumb stick'],
-    ['tap', 'Tap to walk'],
+    ['thumbs', '摇杆施法'],
+    ['tap', '点按移动'],
   ] as const) {
     const opt = document.createElement('option');
     opt.value = v;
@@ -104,7 +104,7 @@ function scaleRow(value: UiScaleSetting): HTMLElement {
   const row = document.createElement('div');
   row.className = 'set-row';
   const lab = document.createElement('label');
-  lab.textContent = 'Interface size';
+  lab.textContent = '界面缩放';
   const select = document.createElement('select');
   const add = (v: string, text: string): void => {
     const opt = document.createElement('option');
@@ -112,7 +112,7 @@ function scaleRow(value: UiScaleSetting): HTMLElement {
     opt.textContent = text;
     select.appendChild(opt);
   };
-  add('auto', 'Auto (fits the screen)');
+  add('auto', '自动（适配屏幕）');
   for (const c of UI_SCALE_CHOICES) add(String(c), `${Math.round(c * 100)}%`);
   select.value = value === 'auto' ? 'auto' : String(value);
   select.addEventListener('change', () => {

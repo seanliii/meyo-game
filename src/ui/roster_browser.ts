@@ -169,8 +169,8 @@ export function openRosterBrowser(container: HTMLElement): () => void {
   // all until the account has answered (ADR 0018).
   const balance = el('span', 'rb-balance');
   head.append(
-    el('h1', 'rb-title', 'The champions'),
-    el('span', 'rb-sub', 'Pick a card to read the full kit'),
+    el('h1', 'rb-title', '全部英雄'),
+    el('span', 'rb-sub', '点开卡片查看完整技能'),
     balance,
     back,
   );
@@ -194,7 +194,7 @@ export function openRosterBrowser(container: HTMLElement): () => void {
     for (const [id, line] of standings) {
       const standing = standingOf(state, id);
       const text = state && standing === 'owned' ? '' : standingLine(state, id);
-      // A price wears the mark; "Yours", "Free this week" and "Locked"
+      // A price wears the mark; "你的", "本周免费" and "未拥有"
       // are words and stay words.
       line.replaceChildren();
       if (standing === 'locked' && priceOf(state, id) !== null) {
@@ -250,12 +250,12 @@ export function openRosterBrowser(container: HTMLElement): () => void {
     const price = priceOf(state, c.id);
     if (price === null) return box;
     if (standing === 'rotation') {
-      box.appendChild(el('div', 'rb-note', 'Free this week for everyone. Recruit it to keep it.'));
+      box.appendChild(el('div', 'rb-note', '本周所有人免费。招募后永久保留。'));
     }
     // "Recruit for" and the mark: the noun is in the mark, and the button
     // is the one place on this screen where the number is the decision.
     const buyLabel = (): void => {
-      btn.replaceChildren(document.createTextNode('Recruit for '), balanceTag('laurels', price));
+      btn.replaceChildren(document.createTextNode('招募（'), balanceTag('laurels', price));
     };
     const btn = el('button', 'rb-buy', '') as HTMLButtonElement;
     buyLabel();
@@ -272,7 +272,7 @@ export function openRosterBrowser(container: HTMLElement): () => void {
     }
     btn.addEventListener('click', () => {
       btn.disabled = true;
-      btn.textContent = 'Recruiting...';
+      btn.textContent = '招募中…';
       void recruit(c.id).then((out) => {
         if (!out.ok) {
           buyLabel();

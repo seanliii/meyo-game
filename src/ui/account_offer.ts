@@ -18,7 +18,7 @@ export interface AccountOfferInput {
   deaths: number;
   assists: number;
   // The champion's display name, or null when the unit is gone. The
-  // roster writes it "Sylra, Thornweaver"; the line uses the name alone.
+  // roster writes it "希尔拉，荆棘织手"; the line uses the name alone.
   champion: string | null;
 }
 
@@ -31,7 +31,7 @@ export interface AccountOffer {
   call: string;
 }
 
-export const OFFER_CALL = 'Create a free account';
+export const OFFER_CALL = '创建免费账号';
 
 function firstName(champion: string): string {
   const comma = champion.indexOf(',');

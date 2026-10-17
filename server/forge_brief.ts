@@ -111,8 +111,8 @@ function briefRules(): string {
       'after the name, no comma of your own), "tagline" at most ' +
       `${TAGLINE_MAX} (the one line that tells four allies what this kit does).`,
     `"role" is exactly one of ${FORGED_ROLES.join(', ')}.`,
-    'Names and titles are original English, like every other champion in the game: no ' +
-      'borrowed game IP, no accents, ASCII letters only.',
+    'Names and titles are original, in Chinese like the rest of the game: no borrowed ' +
+      'game IP, no control characters, one clean line each.',
   ].join(' ');
   const splash =
     '"splash" is one sentence describing the champion as a PICTURE, for the art step: ' +
@@ -200,11 +200,12 @@ function authoredText(s: BriefSuggestion): string[] {
   ];
 }
 
-// Names outside plain ASCII: the game's own naming rule (ADR 0004), the
-// same check the kit conversation makes.
+// Names the game cannot render: control characters are unwelcome anywhere
+// (the roster itself now speaks Chinese, so names are no longer ASCII-only),
+// the same check the kit conversation makes.
 function foreignNames(s: BriefSuggestion): string[] {
   return [s.name, s.title, s.passive?.name, ...KIT_KEYS.map((k) => s.abilities[k]?.name)].filter(
-    (n): n is string => typeof n === 'string' && n !== '' && !/^[\x20-\x7e]*$/.test(n),
+    (n): n is string => typeof n === 'string' && n !== '' && !/^[^\x00-\x1f\x7f]*$/.test(n),
   );
 }
 
@@ -330,11 +331,12 @@ export async function briefChampion(
     }
     const foreign = foreignNames(suggestion);
     if (foreign.length > 0) {
-      lastErrors = [`names not in English: ${foreign.join(', ')}`];
+      lastErrors = [`names contain control characters: ${foreign.join(', ')}`];
       retry(
-        `These names are not plain English: ${foreign.join(', ')}. Rewrite them in English ` +
-          '(ASCII letters only), keep everything else, and answer with ONLY the JSON object.',
-        'The names were not English, asking again',
+        `These names contain control characters: ${foreign.join(', ')}. Rewrite them as one ` +
+          'clean line of text (Chinese is fine), keep everything else, and answer with ONLY ' +
+          'the JSON object.',
+        'The names had control characters, asking again',
       );
       continue;
     }

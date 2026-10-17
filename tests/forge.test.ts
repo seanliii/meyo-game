@@ -478,7 +478,7 @@ describe('serialization and resolution', () => {
   it('resolves into a runnable ChampionDef with a derived description', () => {
     const resolved = resolveForgedChampion(forgedTwin(CHAMPIONS.torv!));
     expect(resolved.id).toBe('forged_torv_twin');
-    expect(resolved.name).toBe('Torv, Stonehorn');
+    expect(resolved.name).toBe('托夫, 石角');
     expect(resolved.passive.name).toBe('Bulwark Aura');
     expect(resolved.passive.description).toBe(
       'Allied champions within 6 gain 8 bonus armor and 0 bonus magic resist.',

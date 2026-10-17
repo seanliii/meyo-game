@@ -22,7 +22,7 @@ export interface AccountDrawerOptions {
 export function openAccountDrawer(host: HTMLElement, opts: AccountDrawerOptions): Drawer {
   const d = openDrawer(host, opts.name);
   d.body.append(
-    drawerSection('Your place'),
+    drawerSection('你的位置'),
     buildLadderCard(() => {
       d.close();
       opts.openLadder();

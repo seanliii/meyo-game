@@ -57,14 +57,14 @@ export function welcomeWords(result: 'created' | 'joined'): {
 } {
   return result === 'joined'
     ? {
-        lead: 'Your account is ready, and you are in the Discord.',
+        lead: '账号已就绪，你已加入 Discord 服务器。',
         said: 'That is where players find each other for a game, and where the next build gets argued about.',
-        link: 'Open the server',
+        link: '打开服务器',
       }
     : {
-        lead: 'Your account is ready.',
+        lead: '账号已就绪。',
         said: 'You came in through Discord, so the server is one click away: it is where players find each other for a game.',
-        link: 'Join the Discord',
+        link: '加入 Discord',
       };
 }
 

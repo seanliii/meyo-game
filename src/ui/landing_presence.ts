@@ -3,7 +3,7 @@
 // press lands them next to a person, and now it does. Counts only, read
 // from /api/public/presence every twenty seconds while the landing is on screen;
 // nothing when nobody is on, so an empty evening says nothing rather than
-// "0 players". The words are pure so a test reads them without a browser.
+// "0 名玩家". The words are pure so a test reads them without a browser.
 
 export const PRESENCE_ROUTE = '/api/public/presence';
 export const PRESENCE_POLL_MS = 20_000;
@@ -24,7 +24,7 @@ export function presenceLine(p: PresenceState): string | null {
   }
   if (p.queued > 0) {
     return p.queued === 1
-      ? 'Someone is waiting for a match right now.'
+      ? '此刻有人正在排队。'
       : `${p.queued} people are waiting for a match right now.`;
   }
   return null;

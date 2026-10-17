@@ -45,15 +45,15 @@ export function affordable(state: CollectionState | null, championId: string): b
 export function standingLine(state: CollectionState | null, championId: string): string {
   switch (standingOf(state, championId)) {
     case 'owned':
-      return 'Yours';
+      return '你的';
     case 'rotation':
-      return 'Free this week';
+      return '本周免费';
     default: {
       // The price without its noun: the caller wears the mark
       // (ui/balances.ts), so the unit is drawn rather than spelled and
       // this line stays a number the way a price tag is.
       const price = priceOf(state, championId);
-      return price === null ? 'Locked' : format(price);
+      return price === null ? '未拥有' : format(price);
     }
   }
 }
@@ -122,9 +122,9 @@ export async function recruit(championId: string): Promise<RecruitResult> {
         collection: raw.collection.filter((v): v is string => typeof v === 'string'),
       };
     }
-    const error = raw && typeof raw.error === 'string' ? raw.error : 'That did not go through.';
+    const error = raw && typeof raw.error === 'string' ? raw.error : '没有成功。';
     return { ok: false, error };
   } catch {
-    return { ok: false, error: 'The server did not answer.' };
+    return { ok: false, error: '服务器没有响应。' };
   }
 }

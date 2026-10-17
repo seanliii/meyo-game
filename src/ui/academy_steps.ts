@@ -20,27 +20,27 @@ export interface Step {
 export const STEPS: readonly Step[] = [
   {
     id: 'bot',
-    label: 'The bot',
+    label: '机器人',
     lead: 'A name, a champion from your collection, two sigils and a skin.',
   },
   {
     id: 'kit',
-    label: 'The kit',
+    label: '技能组',
     lead: 'What it works toward: the build it buys, the spell it maxes first, the lane it asks for. The coach can change these too.',
   },
   {
     id: 'playbook',
-    label: 'The playbook',
+    label: '战术手册',
     lead: 'What it does: the plays, top to bottom. The coach edits them from a sentence.',
   },
   {
     id: 'spar',
-    label: 'Sparring',
+    label: '切磋',
     lead: 'A whole match against house bots, played here in seconds, then its Record and replays.',
   },
   {
     id: 'play',
-    label: 'Play',
+    label: '开始游戏',
     lead: 'Rank it for the Arena and the live queue, play now, and read what the night did.',
   },
 ];
@@ -92,37 +92,33 @@ export interface StepFacts {
   dirty: boolean;
 }
 
-function n(count: number, one: string, many = `${one}s`): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 // The line under a step's name. On a bot not made yet only the first step
 // has anything to say; the rest wait.
 export function stepStatus(id: StepId, f: StepFacts): string {
-  if (!f.bot && id !== 'bot') return 'After it is made';
+  if (!f.bot && id !== 'bot') return '等它建好之后';
   switch (id) {
     case 'bot':
-      if (!f.bot) return 'Not made yet';
+      if (!f.bot) return '还没建';
       return `${f.bot.championName}, ${f.bot.sigilNames.join(' and ')}, v${f.bot.version}`;
     case 'kit': {
-      if (f.kit.items === 0) return 'No build: it buys what its role does';
-      const whose = f.kit.roleBuild ? "the role's build" : 'your own build';
-      const variants = f.kit.variants > 0 ? `, ${n(f.kit.variants, 'variant')}` : '';
-      return `${n(f.kit.items, 'item')}, ${whose}${variants}`;
+      if (f.kit.items === 0) return '还没有出装：它按角色默认购买';
+      const whose = f.kit.roleBuild ? '角色默认出装' : '你的自定义出装';
+      const variants = f.kit.variants > 0 ? `，${f.kit.variants} 个变体` : '';
+      return `${f.kit.items} 件装备，${whose}${variants}`;
     }
     case 'playbook': {
-      const off = f.plays.off > 0 ? `, ${f.plays.off} off` : '';
-      const unsaved = f.dirty ? ', unsaved' : '';
-      return `${n(f.plays.total, 'play')}${off}${unsaved}`;
+      const off = f.plays.off > 0 ? `，${f.plays.off} 条停用` : '';
+      const unsaved = f.dirty ? '，未保存' : '';
+      return `${f.plays.total} 条战术${off}${unsaved}`;
     }
     case 'spar':
-      if (f.record === null) return 'Reading the Record';
-      if (f.record.games === 0) return 'Not sparred yet';
-      return `${n(f.record.games, 'match', 'matches')}, ${f.record.wins} won`;
+      if (f.record === null) return '战绩读取中';
+      if (f.record.games === 0) return '还没切磋过';
+      return `${f.record.games} 场，胜 ${f.record.wins}`;
     case 'play': {
-      if (!f.bot?.deposited) return 'Not ranked';
+      if (!f.bot?.deposited) return '未排位';
       const t = f.bot.tally;
-      return t && t.wins + t.losses > 0 ? `Ranked, ${t.wins}-${t.losses} rated` : 'Ranked';
+      return t && t.wins + t.losses > 0 ? `排位，${t.wins}-${t.losses} 计段` : '排位';
     }
   }
 }

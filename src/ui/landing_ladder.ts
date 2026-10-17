@@ -32,11 +32,11 @@ export interface LandingPage {
   accounts: number;
 }
 
-export const LADDER_HEADING = 'The ladder';
-export const JOIN_CALL = 'Take your place';
+export const LADDER_HEADING = '天梯';
+export const JOIN_CALL = '占好你的位置';
 
 export function columnTitle(way: LandingLadder['way']): string {
-  return way === 'hand' ? 'By hand' : 'Bots';
+  return way === 'hand' ? '手动操盘' : '机器人';
 }
 
 export function recordText(row: Pick<LandingLadderRow, 'wins' | 'losses'>): string {
@@ -53,7 +53,7 @@ export function ladderLead(page: Pick<LandingPage, 'ladder' | 'bots' | 'accounts
       ? 'Nobody has placed yet. The first name here could be yours.'
       : `${page.accounts} accounts, none placed yet. The first name here could be yours.`;
   }
-  const names = placed === 1 ? '1 name placed' : `${placed} names placed`;
+  const names = placed === 1 ? '已有 1 人上榜' : `${placed} names placed`;
   return `${names}, ${page.accounts} accounts. Yours goes here with a free account.`;
 }
 

@@ -431,10 +431,9 @@ export function imageMediaType(
   return 'image/png';
 }
 
-// Names and flavor lines the game cannot show: anything outside plain
-// printable ASCII is not the English the roster speaks (ADR 0004),
-// whatever language the creator wrote in. Plain words in another
-// language slip through here; the prompt carries that rule.
+// Names the game cannot render: control characters are unwelcome anywhere
+// (the roster itself now speaks Chinese, so names are no longer ASCII-only).
+// Line breaks and NULs still never belong on a card.
 function foreignNames(s: Suggestion): string[] {
   const a = s.abilities ?? ({} as Suggestion['abilities']);
   const texts = [
@@ -442,7 +441,7 @@ function foreignNames(s: Suggestion): string[] {
     s.passive?.flavor,
     ...(['Q', 'W', 'E', 'R'] as const).flatMap((k) => [a[k]?.name, a[k]?.flavor]),
   ];
-  return texts.filter((n): n is string => typeof n === 'string' && !/^[\x20-\x7e]*$/.test(n));
+  return texts.filter((n): n is string => typeof n === 'string' && !/^[^\x00-\x1f\x7f]*$/.test(n));
 }
 
 // What the surface reports while a proposal is in the making: the
@@ -575,12 +574,12 @@ export async function suggestKit(
     }
     const foreign = foreignNames(suggestion);
     if (foreign.length > 0) {
-      lastErrors = [`names not in English: ${foreign.join(', ')}`];
+      lastErrors = [`names contain control characters: ${foreign.join(', ')}`];
       retry(
-        `These names or flavor lines are not plain English: ${foreign.join(', ')}. Rewrite ` +
-          'them in English (ASCII letters only), keep everything else, and answer with ONLY ' +
-          'the JSON object.',
-        'The names were not English, asking again',
+        `These names or flavor lines contain control characters: ${foreign.join(', ')}. Rewrite ` +
+          'them as one clean line of text (any language is fine, Chinese preferred), keep ' +
+          'everything else, and answer with ONLY the JSON object.',
+        'The names had control characters, asking again',
       );
       continue;
     }

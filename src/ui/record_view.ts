@@ -75,17 +75,17 @@ function ensureCss(): void {
 }
 
 const KIND_LABEL: Record<RecordKind, string> = {
-  sparring: 'Sparring',
-  series: 'Series',
-  arena: 'Arena',
+  sparring: '切磋',
+  series: '系列赛',
+  arena: '竞技场',
   live: 'Live',
 };
 
 const FILTERS: readonly (readonly [RecordKind | 'all', string])[] = [
   ['all', 'All'],
-  ['sparring', 'Sparring'],
-  ['series', 'Series'],
-  ['arena', 'Arena'],
+  ['sparring', '切磋'],
+  ['series', '系列赛'],
+  ['arena', '竞技场'],
   ['live', 'Live'],
 ];
 
@@ -96,7 +96,7 @@ export function fmtClock(ticks: number): string {
 
 export function fmtWhen(at: number, now = Date.now()): string {
   const d = now - at;
-  if (d < 60_000) return 'just now';
+  if (d < 60_000) return '刚刚';
   if (d < 3_600_000) return `${Math.floor(d / 60_000)} min ago`;
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)} h ago`;
   const date = new Date(at);
@@ -118,7 +118,7 @@ export function resultOf(r: { team: TeamId; winner: TeamId | null }): {
   cls: 'won' | 'lost' | '';
   text: string;
 } {
-  if (r.winner === null) return { cls: '', text: 'No winner' };
+  if (r.winner === null) return { cls: '', text: '未分胜负' };
   return r.winner === r.team ? { cls: 'won', text: 'Won' } : { cls: 'lost', text: 'Lost' };
 }
 
@@ -148,9 +148,9 @@ export function sceneWords(s: DeathScene): string {
   const parts: string[] = [];
   parts.push(s.allies === 0 ? 'alone' : `${s.allies} ${s.allies === 1 ? 'ally' : 'allies'} near`);
   parts.push(
-    s.enemies === 0 ? 'no enemy near' : `${s.enemies} ${s.enemies === 1 ? 'enemy' : 'enemies'}`,
+    s.enemies === 0 ? '附近没有敌人' : `${s.enemies} ${s.enemies === 1 ? 'enemy' : 'enemies'}`,
   );
-  if (s.underTower) parts.push('under their tower');
+  if (s.underTower) parts.push('在敌方塔下');
   return parts.join(', ');
 }
 
@@ -243,10 +243,10 @@ export function sheet(entry: RecordEntry, opts: RecordViewOptions): HTMLElement 
   box.append(head);
   if (line) box.append(buildIcons(line.items, 28));
   const tools = el('div', '');
-  const watch = el('button', 'rv-btn', 'Watch the replay') as HTMLButtonElement;
+  const watch = el('button', 'rv-btn', '观看回放') as HTMLButtonElement;
   if (entry.replayId === null) {
     watch.disabled = true;
-    watch.title = 'No replay was kept for this match';
+    watch.title = '这场对局没有保留回放';
   } else {
     const id = entry.replayId;
     watch.addEventListener('click', () => opts.onWatch(id, undefined, entry.botUnitId));
@@ -283,13 +283,13 @@ export function sheet(entry: RecordEntry, opts: RecordViewOptions): HTMLElement 
       table.append(tr);
     }
     box.append(table);
-  } else box.append(el('div', 'rv-empty', 'No plays were recorded for this seat.'));
+  } else box.append(el('div', 'rv-empty', '该座位没有记录操作。'));
 
   box.append(el('h4', '', 'Deaths'));
   const deaths = mine?.deathsAt ?? [];
   if (deaths.length === 0) {
     box.append(
-      el('div', 'rv-empty', mine ? 'No deaths.' : 'The deaths of this match were not dated.'),
+      el('div', 'rv-empty', mine ? '没有阵亡。' : 'The deaths of this match were not dated.'),
     );
   } else {
     const table = el('table', 'rv-table');

@@ -766,17 +766,17 @@ export function openForgeEditor(container: HTMLElement): () => void {
     { key: 'reference', label: 'Sending your chosen reference' },
     { key: 'classify', label: 'Checking the image' },
     { key: 'model', label: 'Sculpting the 3D model' },
-    { key: 'rig', label: 'Rigging the skeleton' },
-    { key: 'weapon', label: 'Forging the weapon' },
+    { key: 'rig', label: '绑定骨骼' },
+    { key: 'weapon', label: '锻造武器' },
     { key: 'download', label: 'Bringing the model home' },
   ];
   const ANIM_STAGES: readonly { key: string; label: string }[] = [
-    { key: 'rig', label: 'Rigging the skeleton' },
+    { key: 'rig', label: '绑定骨骼' },
     { key: 'animate', label: 'Applying your animations' },
     { key: 'download', label: 'Bringing the clips home' },
   ];
   const WEAPON_STAGES: readonly { key: string; label: string }[] = [
-    { key: 'weapon', label: 'Forging the weapon' },
+    { key: 'weapon', label: '锻造武器' },
     { key: 'download', label: 'Bringing the weapon home' },
   ];
   // Whichever chain is on screen owns the checklist.
@@ -899,7 +899,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
       return saving;
     }
     const snap = snapshot();
-    setSaveState('Saving...');
+    setSaveState('保存中…');
     saving = api<{ ok: boolean; error?: string }>('/api/forge/draft', { def: current }).then(
       (r) => {
         saving = null;
@@ -909,7 +909,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
           setSaveState('All changes saved');
           void loadDrafts();
         } else {
-          lastSaveError = r?.error ?? 'save failed';
+          lastSaveError = r?.error ?? '保存失败';
           setSaveState(`Not saved: ${lastSaveError}`, true);
         }
         if (saveAgain) {
@@ -1061,7 +1061,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
         line: job.line,
         ...(from ? { fromCid: from.cid } : {}),
       });
-      if (!out?.ok) throw new Error(out?.error ?? 'generation failed');
+      if (!out?.ok) throw new Error(out?.error ?? '生成失败');
       delete refineFrom[job.kind];
       quotaNote = out.quota ? ` ${out.quota.used}/${out.quota.limit} images today.` : '';
       await loadArt();
@@ -1071,7 +1071,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     // yes at once); its one open art kind generates against the row.
     void ensureSaved()
       .then(async (saved) => {
-        if (!saved) throw new Error(lastSaveError ?? 'save failed');
+        if (!saved) throw new Error(lastSaveError ?? '保存失败');
         for (const job of jobs) await runOne(job);
       })
       .then(() => {
@@ -1083,7 +1083,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
       })
       .catch((err: unknown) => {
         generating = null;
-        status.textContent = err instanceof Error ? err.message : 'generation failed';
+        status.textContent = err instanceof Error ? err.message : '生成失败';
         void loadArt().then(() => renderMain());
       });
   };
@@ -1239,7 +1239,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
   // read as a setting of its clips). It stands with the other champion
   // actions, reachable from every tab, and says in plain words what it
   // locks and what it still leaves open.
-  const sealBtn = el('button', 'fe-btn', 'Seal the champion') as HTMLButtonElement;
+  const sealBtn = el('button', 'fe-btn', '封存英雄') as HTMLButtonElement;
   const sealNote = el('div', 'fe-desc', '');
   const deleteBtn = el('button', 'fe-btn danger', 'Delete draft') as HTMLButtonElement;
 
@@ -1303,12 +1303,12 @@ export function openForgeEditor(container: HTMLElement): () => void {
     const row = currentRow();
     const sealed = isSealed();
     const busy = generating !== null || finalizing || animating || weaponForging;
-    sealBtn.textContent = sealed ? 'Unseal (edit the kit again)' : 'Seal the champion';
+    sealBtn.textContent = sealed ? 'Unseal (edit the kit again)' : '封存英雄';
     const kit = validateForged(current);
     const missing = sealed
       ? null
       : !row?.model
-        ? 'Build the 3D model first (Step 4)'
+        ? '请先完成 3D 模型（第 4 步）'
         : row.clips === null || row.clips === undefined
           ? 'Give it its animations first (Step 5)'
           : kit.ok
@@ -1335,7 +1335,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
   saveBtn.title = 'Every change saves on its own; this saves this instant';
   saveBtn.addEventListener('click', () => {
     void saveNow().then((ok) => {
-      status.textContent = ok ? 'Draft saved.' : (lastSaveError ?? 'save failed');
+      status.textContent = ok ? 'Draft saved.' : (lastSaveError ?? '保存失败');
     });
   });
   deleteBtn.addEventListener('click', () => {
@@ -1416,7 +1416,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     };
     void api<{ ok: boolean; error?: string }>('/api/forge/draft', { def: current })
       .then((saved) => {
-        if (!saved?.ok) throw new Error(saved?.error ?? 'save failed');
+        if (!saved?.ok) throw new Error(saved?.error ?? '保存失败');
         return api<{ ok: boolean; jobId?: number; error?: string }>('/api/forge/build', {
           id: current.id,
           ...(force ? { force: true } : {}),
@@ -1424,7 +1424,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
       })
       .then((started) => {
         if (!started?.ok || started.jobId === undefined) {
-          settle(started?.error ?? 'the build could not start');
+          settle(started?.error ?? '构建没能启动');
           return;
         }
         const poll = (): void => {
@@ -1469,7 +1469,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
         poll();
       })
       .catch((err: unknown) => {
-        settle(err instanceof Error ? err.message : 'the build could not start');
+        settle(err instanceof Error ? err.message : '构建没能启动');
       });
   };
   finalizeBtn.addEventListener('click', () => runForge());
@@ -1507,7 +1507,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
           `/api/forge/job?id=${started.jobId}`,
         ).then((job) => {
           if (!job?.ok) {
-            settle('the job vanished; reload and check your champion');
+            settle('任务丢失；请刷新后检查你的英雄');
             return;
           }
           if (job.status === 'success') {
@@ -1562,7 +1562,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
         ).then((job) => {
           if (!job?.ok) {
             weaponForging = false;
-            status.textContent = 'the job vanished; reload and check your champion';
+            status.textContent = '任务丢失；请刷新后检查你的英雄';
             renderMain();
             return;
           }
@@ -1912,7 +1912,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
             ensureSaved().then((ok) =>
               ok
                 ? chatStream('/api/forge/brief', { id: current.id, def: current, messages }, onLine)
-                : { ok: false, error: lastSaveError ?? 'the draft could not be saved' },
+                : { ok: false, error: lastSaveError ?? '配置没能保存' },
             ),
           accept: (r) => {
             if (!r?.ok || !r.passive || !r.abilities || !r.base || !r.growth) {
@@ -2035,7 +2035,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
       // Iterating keeps the character: the input then asks for the change
       // only, and the server appends it to the source image's prompt.
       line.placeholder = refineFrom.splash
-        ? 'What should change? The character stays the same...'
+        ? '想改哪里？角色本体保持不变…'
         : 'Silhouette, materials, mood, one accent color, memorable details...';
       line.maxLength = 400;
       line.value = artLines.splash ?? '';
@@ -2086,7 +2086,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     const refPanel = el('div', 'fe-panel');
     refPanel.append(el('h3', '', 'Step 2: model reference (what the 3D is built from)'));
     if (sealed) {
-      refPanel.append(el('div', 'fe-lead', 'Sealed with the champion.'));
+      refPanel.append(el('div', 'fe-lead', '已随英雄一同封存。'));
     } else if (!chosenOf('splash')) {
       refPanel.append(
         el(
@@ -2106,7 +2106,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
       const heroRow = el('div', 'fe-hero');
       const notes = el('input', 'fe-hero-input') as HTMLInputElement;
       notes.placeholder = refineFrom.sheet
-        ? 'What should change? The character stays the same...'
+        ? '想改哪里？角色本体保持不变…'
         : 'Optional notes: fix the pose, the colors, the outfit...';
       notes.maxLength = 400;
       notes.value = artLines.sheet ?? '';
@@ -2132,7 +2132,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     // A champion sealed WITHOUT a weapon keeps this zone open: the
     // weapon can still be claimed here, at its own price.
     if (sealed && row?.weapon) {
-      weaponPanel.append(el('div', 'fe-lead', 'Sealed with the champion.'));
+      weaponPanel.append(el('div', 'fe-lead', '已随英雄一同封存。'));
     } else if (!chosenOf('splash')) {
       weaponPanel.append(
         el(
@@ -2406,7 +2406,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
           });
           rowEl.append(sel);
           const play = el('button', 'fe-mini', 'Play') as HTMLButtonElement;
-          play.title = 'Play this pick on the mannequin';
+          play.title = '在人台上试玩这套配置';
           play.addEventListener('click', () => animPreview?.show(sel.value, role));
           rowEl.append(play);
           const bakedId = bakedNow?.[role];
@@ -2451,7 +2451,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
         );
         bake.disabled = !row?.model || busy || finalizing || weaponForging;
         bake.title = !row?.model
-          ? 'Build the 3D model first (Step 4)'
+          ? '请先完成 3D 模型（第 4 步）'
           : 'Applies your five picks to your rigged model';
         bake.addEventListener('click', () => runAnimate(animPicks));
         actions.append(bake);
@@ -2559,11 +2559,11 @@ export function openForgeEditor(container: HTMLElement): () => void {
           ensureSaved().then((ok) =>
             ok
               ? chatStream('/api/forge/suggest', { id: current.id, def: current, messages }, onLine)
-              : { ok: false, error: lastSaveError ?? 'the draft could not be saved' },
+              : { ok: false, error: lastSaveError ?? '配置没能保存' },
           ),
         accept: (r) => {
           if (!r?.ok || !r.passive || !r.abilities || typeof r.raw !== 'string') {
-            return { error: r?.error ?? 'the suggestion failed' };
+            return { error: r?.error ?? '建议生成失败' };
           }
           proposal = {
             passive: r.passive,
@@ -2687,11 +2687,11 @@ export function openForgeEditor(container: HTMLElement): () => void {
                   { id: current.id, def: current, messages },
                   onLine,
                 )
-              : { ok: false, error: lastSaveError ?? 'the draft could not be saved' },
+              : { ok: false, error: lastSaveError ?? '配置没能保存' },
           ),
         accept: (r) => {
           if (!r?.ok || !r.looks || typeof r.raw !== 'string') {
-            return { error: r?.error ?? 'the suggestion failed' };
+            return { error: r?.error ?? '建议生成失败' };
           }
           lookProposal = r.looks;
           return { raw: r.raw, bubble: r.comment ? r.comment : 'Here are the spell looks.' };
@@ -3140,7 +3140,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     if (bakedPick !== undefined && choices.some((c) => c.id === bakedPick)) sel.value = bakedPick;
     rowEl.append(sel);
     const play = el('button', 'fe-mini', 'Play') as HTMLButtonElement;
-    play.title = 'Play this pick on the mannequin';
+    play.title = '在人台上试玩这套配置';
     play.addEventListener('click', () => {
       if (sel.value !== '') animPreview?.show(sel.value, 'cast');
     });
@@ -3151,7 +3151,7 @@ export function openForgeEditor(container: HTMLElement): () => void {
     };
     apply.disabled = !row?.model || animating || finalizing || weaponForging;
     apply.title = !row?.model
-      ? 'Build the 3D model first (Step 4)'
+      ? '请先完成 3D 模型（第 4 步）'
       : `Bakes this animation for ${key} alone; spends nothing`;
     apply.addEventListener('click', () => {
       if (sel.value !== '') runAnimate({ [slot]: sel.value });
@@ -3322,11 +3322,11 @@ export function openForgeEditor(container: HTMLElement): () => void {
                   { id: current.id, def: current, messages },
                   onLine,
                 )
-              : { ok: false, error: lastSaveError ?? 'the draft could not be saved' },
+              : { ok: false, error: lastSaveError ?? '配置没能保存' },
           ),
         accept: (r) => {
           if (!r?.ok || !r.base || !r.growth || typeof r.raw !== 'string') {
-            return { error: r?.error ?? 'the suggestion failed' };
+            return { error: r?.error ?? '建议生成失败' };
           }
           statProposal = {
             base: r.base,

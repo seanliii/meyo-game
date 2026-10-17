@@ -10,11 +10,11 @@ const TWINSHOT_RATIO = 0.5;
 
 export const ASHVYN: ChampionDef = {
   id: 'ashvyn',
-  name: 'Ashvyn, Nightbow',
+  name: '艾什文, 夜弓',
   role: 'Marksman',
   blurb: 'A mobile duelist marksman who weaves in and out of range.',
   passive: {
-    name: 'Twinshot',
+    name: '双发',
     description:
       'Every third attack strikes twice (the echo deals 50 percent damage). ' +
       "Casting Hunter's Step readies the echo instantly.",
@@ -46,7 +46,7 @@ export const ASHVYN: ChampionDef = {
   growth: { hp: 90, mana: 30, ad: 5.5, armor: 2.2, mr: 1.3 },
   abilities: {
     Q: {
-      name: 'Shadow Volley',
+      name: '暗影齐射',
       manaCost: 40,
       cooldown: 5.5,
       castRange: 7,
@@ -80,7 +80,7 @@ export const ASHVYN: ChampionDef = {
       },
     },
     E: {
-      name: 'Pinning Arrow',
+      name: '钉足箭',
       manaCost: 45,
       cooldown: 8.5,
       castRange: 10,

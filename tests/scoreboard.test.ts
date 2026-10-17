@@ -46,7 +46,7 @@ describe('scoreboard', () => {
     const mine = score.rows.find((r) => r.player === 'killian');
     expect(mine).toBeDefined();
     expect(mine!.championId).toBe('sylra');
-    expect(mine!.name).toBe('Sylra');
+    expect(mine!.name).toBe('希尔拉');
     expect(score.rows.filter((r) => (r.player ?? '').startsWith('House '))).toHaveLength(9);
 
     const client = new ClientWorld(() => undefined, starOrchard().map);

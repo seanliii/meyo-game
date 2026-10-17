@@ -18,13 +18,13 @@ const BARBED_MARK: EffectSpec = {
 
 export const SYLRA: ChampionDef = {
   id: 'sylra',
-  name: 'Sylra, Thornweaver',
+  name: '希尔拉, 荆棘织手',
   role: 'Mage',
   blurb: 'A zone-control mage who locks areas down and punishes anyone who stays.',
   // Barbed Marks lives entirely in her ability specs (mark effects), so the
   // passive entry is descriptive only.
   passive: {
-    name: 'Barbed Marks',
+    name: '倒刺标记',
     description: 'Her abilities mark enemies; the third mark on a target roots it briefly.',
   },
   base: {
@@ -50,7 +50,7 @@ export const SYLRA: ChampionDef = {
   },
   abilities: {
     Q: {
-      name: 'Thorn Bolt',
+      name: '荆棘箭',
       manaCost: 45,
       cooldown: 5.5,
       castRange: 10.5,
@@ -69,7 +69,7 @@ export const SYLRA: ChampionDef = {
       },
     },
     W: {
-      name: 'Bramble Field',
+      name: '荆棘丛',
       manaCost: 60,
       cooldown: 9,
       castRange: 8.5,
@@ -86,7 +86,7 @@ export const SYLRA: ChampionDef = {
       },
     },
     E: {
-      name: 'Verdant Shell',
+      name: '翠绿之壳',
       manaCost: 50,
       cooldown: 8.5,
       castRange: 8,
@@ -111,7 +111,7 @@ export const SYLRA: ChampionDef = {
       },
     },
     R: {
-      name: 'Overgrowth',
+      name: '疯长',
       manaCost: 85,
       cooldown: 60,
       castRange: 9,

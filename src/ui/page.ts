@@ -202,7 +202,7 @@ export function buildPage(variant: string, withHero: boolean): Page {
   const root = el('div', `pg ${variant}`);
   const inner = el('div', 'pg-inner');
   const bar = el('nav', 'pg-bar');
-  const brand = el('div', 'pg-brand', 'Legends');
+  const brand = el('div', 'pg-brand', '传奇对决');
   const links = el('div', 'pg-bar-links');
   const right = el('div', 'pg-bar-right');
   bar.append(brand, links, right);

@@ -65,9 +65,9 @@ async function post(path: string, body?: unknown): Promise<string | null> {
     });
     if (res.ok) return null;
     const parsed = (await res.json().catch(() => null)) as { error?: string } | null;
-    return parsed?.error ?? 'That did not work.';
+    return parsed?.error ?? '没有成功，请重试。';
   } catch {
-    return 'Cannot reach the server. Check your connection.';
+    return '无法连接服务器，请检查网络。';
   }
 }
 
@@ -129,15 +129,15 @@ export function buildEmailNotice(
     void work.then((failure) => {
       button.disabled = false;
       button.textContent = original;
-      said.textContent = failure ?? 'Sent. Check your inbox, and the spam folder.';
+      said.textContent = failure ?? '已发送。请查收件箱和垃圾邮件文件夹。';
     });
   };
 
   if (account.email !== null) {
-    const resend = el('button', 'mail-act', 'Send the link again');
+    const resend = el('button', 'mail-act', '重新发送链接');
     resend.type = 'button';
     resend.addEventListener('click', () => {
-      busy(resend, 'Sending...', post('/api/email/resend'));
+      busy(resend, '发送中…', post('/api/email/resend'));
     });
     note.appendChild(resend);
   }
@@ -149,16 +149,16 @@ export function buildEmailNotice(
   field.type = 'email';
   field.maxLength = 254;
   field.autocomplete = 'email';
-  field.placeholder = account.email === null ? 'Email address' : 'A different address';
-  const save = el('button', 'menu-btn', account.email === null ? 'Add it' : 'Change it');
+  field.placeholder = account.email === null ? '邮箱地址' : '换一个邮箱';
+  const save = el('button', 'menu-btn', account.email === null ? '绑定' : '更换');
   save.type = 'button';
   save.addEventListener('click', () => {
     const typed = field.value.trim();
     if (typed.length === 0) {
-      said.textContent = 'An email address, please.';
+      said.textContent = '请输入邮箱地址。';
       return;
     }
-    busy(save, 'Saving...', post('/api/email', { email: typed }));
+    busy(save, '保存中…', post('/api/email', { email: typed }));
   });
   field.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') save.click();
@@ -167,7 +167,7 @@ export function buildEmailNotice(
   if (account.email === null) {
     note.appendChild(row);
   } else {
-    const change = el('button', 'mail-act', 'Use a different address');
+    const change = el('button', 'mail-act', '使用其他邮箱');
     change.type = 'button';
     change.addEventListener('click', () => {
       change.replaceWith(row);

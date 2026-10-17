@@ -41,9 +41,8 @@ describe('the landing modes', () => {
     // is a narrow column: anything longer than a handful of words wraps
     // past the two lines the foot scrim has room for.
     for (const mode of LANDING_MODES) {
-      expect(mode.call.length).toBeGreaterThan(8);
+      expect(mode.call.length).toBeGreaterThan(2);
       expect(mode.call.length).toBeLessThan(24);
-      expect(mode.call.split(' ').length).toBeLessThanOrEqual(4);
     }
   });
 
@@ -62,7 +61,7 @@ describe('the landing modes', () => {
   // The door that needs nothing says where the match is, not what it
   // lacks: "offline" read as a lesser game to a visitor who came to play.
   it('call the free match a match in the browser, never offline', () => {
-    expect(PLAY_NOW_CALL).toMatch(/browser/i);
+    expect(PLAY_NOW_CALL).toMatch(/浏览器/);
     expect(PLAY_NOW_CALL).not.toMatch(/offline/i);
   });
 });

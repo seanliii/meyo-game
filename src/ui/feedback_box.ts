@@ -15,20 +15,20 @@ export const FEEDBACK_VERSION = 1;
 // never the thing a player meets.
 export const FEEDBACK_MAX = 1000;
 
-export const FEEDBACK_ASK = 'One person makes this game.';
-export const FEEDBACK_CALL = 'What should I improve?';
+export const FEEDBACK_ASK = '这个游戏由一个人打造。';
+export const FEEDBACK_CALL = '你觉得哪里该改进？';
 export const FEEDBACK_PLACEHOLDER = 'What felt wrong, what is missing, what you would change.';
 export const FEEDBACK_SEND = 'Send';
-export const FEEDBACK_THANKS = 'Thank you. I read every one of these.';
-export const NUDGE_LABEL = 'Feedback';
+export const FEEDBACK_THANKS = '谢谢，每一条我都会看。';
+export const NUDGE_LABEL = '反馈';
 
 // The line at the start of a match that says the box exists. Most matches
 // end with the tab closed, never on the end screen or through the pause
 // menu, so a player who is only asked there is never asked at all. It
 // comes up once the opening shop is out of the way, stays a moment, and a
 // click on it opens the menu where the box is.
-export const NUDGE_CALL_MOUSE = 'Open the feedback box. Esc works too.';
-export const NUDGE_CALL_TOUCH = 'Open the feedback box. Menu works too.';
+export const NUDGE_CALL_MOUSE = '打开反馈框（Esc 也可以）。';
+export const NUDGE_CALL_TOUCH = '打开反馈框（菜单里也可以）。';
 // Seconds of match time: when it may first show, and how long it stays.
 export const NUDGE_FROM = 11;
 export const NUDGE_HOLD = 12;

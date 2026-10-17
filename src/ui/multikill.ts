@@ -4,7 +4,7 @@
 //
 // The numbers were measured before they were picked, over 240 bot matches
 // (15191 champion kills), and two things came out of it. The flat ten
-// second window this replaces fired "Double kill" 7.3 times a match, which
+// second window this replaces fired "双杀" 7.3 times a match, which
 // is wallpaper rather than an event. And no window short enough to fix
 // that leaves a pentakill reachable, because five enemies do not die inside
 // six seconds: at a flat six the top of the ladder went silent for 240
@@ -63,7 +63,7 @@ export interface MultikillLook {
 // rendered from the same table. The screen already says the right word.
 const LOOKS: Readonly<Record<number, MultikillLook>> = {
   2: {
-    text: 'DOUBLE KILL',
+    text: '双杀',
     color: '#ffd94a',
     spotlight: false,
     holdMs: 2600,
@@ -72,7 +72,7 @@ const LOOKS: Readonly<Record<number, MultikillLook>> = {
     voice: 'double_kill',
   },
   3: {
-    text: 'TRIPLE KILL',
+    text: '三连绝世',
     color: '#ffd94a',
     spotlight: false,
     holdMs: 2600,

@@ -61,7 +61,7 @@ export function championProgress(input: ProgressInput): Progress {
     price('model') + price('rig') + (weaponArt && !input.weapon ? price('weapon') : 0);
   const steps: ProgressStep[] = [
     { key: 'splash', label: 'Splash art', done: splash, optional: false, cost: price('image') },
-    { key: 'sheet', label: 'Model reference', done: sheet, optional: false, cost: price('image') },
+    { key: 'sheet', label: '模型参考', done: sheet, optional: false, cost: price('image') },
     {
       key: 'weapon',
       label: 'Weapon (optional)',

@@ -35,8 +35,8 @@ describe('the Discord welcome', () => {
 
   it('stops inviting somebody the auto-join already let in', () => {
     // Being asked to join a server you are standing in reads as a bug.
-    expect(welcomeWords('created').link).toBe('Join the Discord');
-    expect(welcomeWords('joined').link).toBe('Open the server');
-    expect(welcomeWords('joined').lead).toContain('you are in the Discord');
+    expect(welcomeWords('created').link).toBe('加入 Discord');
+    expect(welcomeWords('joined').link).toBe('打开服务器');
+    expect(welcomeWords('joined').lead).toContain('已加入 Discord');
   });
 });

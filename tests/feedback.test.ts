@@ -93,8 +93,8 @@ describe('what is worth sending', () => {
   });
 
   it('says who is asking, since that is why it is answered', () => {
-    expect(FEEDBACK_ASK).toContain('One person');
-    expect(FEEDBACK_CALL).toContain('improve');
+    expect(FEEDBACK_ASK).toContain('一个人打造');
+    expect(FEEDBACK_CALL).toContain('改进');
   });
 });
 
@@ -189,7 +189,7 @@ describe('the feedback nudge', () => {
 
   it('names the way to the menu for the device in hand', () => {
     expect(nudgeCall(false)).toContain('Esc');
-    expect(nudgeCall(true)).toContain('Menu');
+    expect(nudgeCall(true)).toContain('菜单里也可以');
     expect(nudgeCall(true)).not.toContain('Esc');
   });
 });

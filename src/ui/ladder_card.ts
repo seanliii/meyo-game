@@ -41,9 +41,9 @@ export interface Place {
 export type Places = Record<'hand' | 'bot' | 'arena' | 'forge', Place>;
 
 export const WAY_LABELS: Readonly<Record<keyof Places, string>> = {
-  hand: 'By hand',
-  bot: 'Bots, live',
-  arena: 'Arena',
+  hand: '手动操盘',
+  bot: '机器人代打',
+  arena: '竞技场',
   forge: 'Forge',
 };
 
@@ -56,16 +56,16 @@ export function placeLine(p: Place, way?: keyof Places): string {
     return `Rank ${p.rank} of ${p.total}${way ? `, ${WAY_LABELS[way].toLowerCase()}` : ''}`;
   }
   if (p.games > 0) return `Placement: ${p.games} of ${MIN_RATED_GAMES} rated matches`;
-  return 'Unplaced: three rated matches place you.';
+  return '未定级：打满三场计段对局出分。';
 }
 
 export function buildLadderCard(onOpen: () => void): HTMLElement {
   ensureCss();
   const box = el('div', 'lc');
   const main = el('div', 'lc-main');
-  main.append(el('span', 'lc-tier', 'Loading your place...'));
+  main.append(el('span', 'lc-tier', '你的排名加载中…'));
   const ways = el('div', 'lc-ways');
-  const open = el('button', 'menu-btn primary', 'Open the ladder');
+  const open = el('button', 'menu-btn primary', '查看天梯');
   open.addEventListener('click', onOpen);
   box.append(main, ways, open);
 
@@ -74,7 +74,7 @@ export function buildLadderCard(onOpen: () => void): HTMLElement {
     .then((places) => {
       main.textContent = '';
       if (!places) {
-        main.append(el('span', 'lc-rank', 'Ladder unavailable: the game server is not reachable.'));
+        main.append(el('span', 'lc-rank', '天梯不可用：连不上游戏服务器。'));
         return;
       }
       const hand = places.hand;
@@ -108,7 +108,7 @@ export function buildLadderCard(onOpen: () => void): HTMLElement {
     })
     .catch(() => {
       main.textContent = '';
-      main.append(el('span', 'lc-rank', 'Ladder unavailable: the game server is not reachable.'));
+      main.append(el('span', 'lc-rank', '天梯不可用：连不上游戏服务器。'));
     });
   return box;
 }

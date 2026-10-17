@@ -257,9 +257,9 @@ export function showQueue(
   onCancel: () => void,
 ): QueueController {
   const { root, card } = screen(container);
-  card.append(el('h1', 'menu-title', 'In queue'));
-  const status = el('div', 'menu-status', 'Waiting for players...');
-  const startNow = el('button', 'menu-btn primary', 'Start now with bots') as HTMLButtonElement;
+  card.append(el('h1', 'menu-title', '排队中'));
+  const status = el('div', 'menu-status', '等待玩家加入…');
+  const startNow = el('button', 'menu-btn primary', '立即用机器人开局') as HTMLButtonElement;
   startNow.addEventListener('click', () => {
     // Inside the click gesture, so the match opens already fullscreen.
     requestGameFullscreen();
@@ -281,7 +281,7 @@ export function showQueue(
       }
       status.textContent = line;
       startNow.textContent =
-        startsIn !== null && !ready ? `Join the bot match (${startsIn}s)` : 'Start now with bots';
+        startsIn !== null && !ready ? `Join the bot match (${startsIn}s)` : '立即用机器人开局';
       startNow.disabled = ready;
     },
     remove() {
@@ -303,19 +303,19 @@ export function showLobby(
   onQueueParty: () => void,
 ): LobbyController {
   const { root, card } = screen(container);
-  card.append(el('h1', 'menu-title', 'Private lobby'));
+  card.append(el('h1', 'menu-title', '私人房间'));
   const codeEl = el('div', 'menu-code', '-----');
 
   // The invite link: one click to share, one click for the friend to land
   // here (src/main.ts consumes ?join=CODE at boot).
   let link = '';
-  const copy = el('button', 'menu-btn', 'Copy invite link');
+  const copy = el('button', 'menu-btn', '复制邀请链接');
   copy.addEventListener('click', () => {
     if (!link) return;
     void navigator.clipboard?.writeText(link).then(() => {
-      copy.textContent = 'Link copied!';
+      copy.textContent = '链接已复制！';
       window.setTimeout(() => {
-        copy.textContent = 'Copy invite link';
+        copy.textContent = '复制邀请链接';
       }, 1600);
     });
   });
@@ -327,14 +327,14 @@ export function showLobby(
     const box = el('div', `menu-team ${team === 0 ? 'blue' : 'red'}`);
     box.appendChild(el('h4', '', `Team ${team + 1}`));
     const list = el('div', '');
-    const btn = el('button', 'menu-btn', 'Play on this side');
+    const btn = el('button', 'menu-btn', '加入这一边');
     btn.addEventListener('click', () => onPickTeam(team));
     box.append(list, btn);
     teamsWrap.appendChild(box);
     return { list, btn };
   });
 
-  const start = el('button', 'menu-btn primary', 'Start match');
+  const start = el('button', 'menu-btn primary', '开始对局');
   start.style.display = 'none';
   start.addEventListener('click', () => {
     // Inside the click gesture, so the match opens already fullscreen.
@@ -343,7 +343,7 @@ export function showLobby(
   });
   // Host only, parties of up to five: the whole lobby queues publicly
   // on ONE side (the two-column split above is for private matches).
-  const party = el('button', 'menu-btn', 'Queue as a party') as HTMLButtonElement;
+  const party = el('button', 'menu-btn', '组队排队') as HTMLButtonElement;
   party.style.display = 'none';
   party.addEventListener('click', onQueueParty);
   const leave = el('button', 'menu-btn', 'Leave');
@@ -351,15 +351,7 @@ export function showLobby(
     root.remove();
     onLeave();
   });
-  card.append(
-    el('div', 'menu-label', 'Share this code'),
-    codeEl,
-    copy,
-    teamsWrap,
-    start,
-    party,
-    leave,
-  );
+  card.append(el('div', 'menu-label', '分享房间码'), codeEl, copy, teamsWrap, start, party, leave);
   return {
     update(code, host, selfTeam, players) {
       codeEl.textContent = code;
@@ -368,7 +360,7 @@ export function showLobby(
         const col = cols[team]!;
         const members = players.filter((p) => p.team === team);
         col.list.textContent =
-          members.length > 0 ? members.map((p) => p.name).join(', ') : 'Empty (bots fill in)';
+          members.length > 0 ? members.map((p) => p.name).join(', ') : '空位（机器人补齐）';
         // Your own side needs no button; a full side takes nobody else.
         col.btn.style.display = selfTeam === team ? 'none' : 'block';
         col.btn.disabled = members.length >= 5;
@@ -454,7 +446,7 @@ export function showSelect(
   preloadChampionAssets();
   const { root, card } = screen(container);
   card.classList.add('select');
-  card.append(el('h1', 'menu-title', 'Champion select'));
+  card.append(el('h1', 'menu-title', '选择英雄'));
 
   let teamsBox: HTMLElement | null = null;
   if (roster) {
@@ -593,7 +585,7 @@ export function showSelect(
   lock.addEventListener('click', () => {
     if (!championId || sigils.length !== 2) return;
     lock.disabled = true;
-    lock.textContent = 'Locked';
+    lock.textContent = '未拥有';
     onLock(championId, [sigils[0]!, sigils[1]!], skinIndex, botId ?? undefined);
   });
 
@@ -618,7 +610,7 @@ export function showSelect(
         el(
           'div',
           'menu-champ-blurb',
-          champ ? `Plays ${champ.name.split(',')[0]}. You coach.` : 'You coach.',
+          champ ? `Plays ${champ.name.split(',')[0]}. You coach.` : '你来当教练。',
         ),
       );
       btn.appendChild(body);
@@ -637,7 +629,7 @@ export function showSelect(
       champButtons.set(`bot:${b.id}`, btn);
       botsGrid.appendChild(btn);
     }
-    botsBlock = [el('div', 'menu-label', 'Your bots (the bot plays, you coach)'), botsGrid];
+    botsBlock = [el('div', 'menu-label', '你的机器人（它上场，你指导）'), botsGrid];
   }
 
   // Forge queue: forged cards (own and community) share one builder wired
@@ -688,7 +680,7 @@ export function showSelect(
   if (forged && forged.length > 0) {
     const forgedGrid = el('div', 'menu-grid');
     for (const f of forged) forgedGrid.appendChild(forgedCard(f.def, f.def.role, f.splash));
-    forgedBlock = [el('div', 'menu-label', 'Your forged champions'), forgedGrid];
+    forgedBlock = [el('div', 'menu-label', '你锻造的英雄'), forgedGrid];
   }
 
   // The community tab (plan-forge phase 7): every shared champion, popular
@@ -698,7 +690,7 @@ export function showSelect(
   if (community && community.length > 0) {
     const communityGrid = el('div', 'menu-grid');
     const searchBox = el('input', 'menu-input') as HTMLInputElement;
-    searchBox.placeholder = 'Search shared champions or creators';
+    searchBox.placeholder = '搜索社区英雄或创作者';
     const renderCommunity = (): void => {
       communityGrid.textContent = '';
       const needle = searchBox.value.trim().toLowerCase();
@@ -726,7 +718,7 @@ export function showSelect(
     ];
   }
 
-  const randomBtn = el('button', 'menu-btn', 'Random champion');
+  const randomBtn = el('button', 'menu-btn', '随机英雄');
   randomBtn.addEventListener('click', () => {
     const free = STARTER_CHAMPION_LIST.filter(
       (c) => !takenSet.has(c.id) && playable(collection ?? null, c.id),
@@ -741,11 +733,7 @@ export function showSelect(
   const main = el('div', 'menu-select-main');
   const side = el('div', 'menu-select-side');
   const champPane = el('div', 'menu-pane');
-  champPane.append(
-    el('div', 'menu-label', 'Pick your champion (hover for the kit)'),
-    wallNote,
-    grid,
-  );
+  champPane.append(el('div', 'menu-label', '选择你的英雄（悬停查看技能）'), wallNote, grid);
   champPane.append(...forgedBlock, ...communityBlock, randomBtn);
   if (botsBlock.length > 0) {
     // Your bots on their own tab (ADR 0013); the pick machinery is shared,
@@ -837,7 +825,7 @@ export function showNotice(container: HTMLElement, title: string, body: string):
       frame.closed();
       resolve();
     };
-    const back = el('button', 'menu-btn primary', 'Back to menu');
+    const back = el('button', 'menu-btn primary', '回到主菜单');
     back.addEventListener('click', dismiss);
     card.appendChild(back);
     const frame = appNav().push('notice', dismiss);

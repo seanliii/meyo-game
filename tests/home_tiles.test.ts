@@ -8,11 +8,11 @@ describe('the play tiles', () => {
   it('stand in order, Ranked the one hero', () => {
     expect(PLAY_TILES.map((t) => t.id)).toEqual(['ranked', 'bots', 'forge', 'lobby', 'practice']);
     expect(PLAY_TILES.map((t) => t.title)).toEqual([
-      'Ranked',
-      'Bots',
-      'Forge queue',
-      'Private lobby',
-      'Practice',
+      '排位',
+      '机器人',
+      '锻造队列',
+      '私人房间',
+      '练习',
     ]);
     expect(PLAY_TILES.filter((t) => t.hero).map((t) => t.id)).toEqual(['ranked']);
   });
@@ -48,7 +48,7 @@ describe('the play tiles', () => {
     const withCta = PLAY_TILES.filter((t) => t.cta !== null).map((t) => t.id);
     expect(withCta).toEqual(['ranked', 'bots', 'forge', 'lobby', 'practice']);
     expect(PLAY_TILES.every((t) => (t.cta !== null) === (t.hero || t.tall))).toBe(true);
-    expect(PLAY_TILES.find((t) => t.id === 'ranked')?.cta).toBe('Play online');
+    expect(PLAY_TILES.find((t) => t.id === 'ranked')?.cta).toBe('在线开玩');
   });
 
   it('wears one painting and one accent each, none shared', () => {

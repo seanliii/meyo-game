@@ -29,7 +29,7 @@ describe('the replay refusal', () => {
   it('says a record is older when the server would refuse it too', () => {
     const old = { version: REPLAY_VERSION - 1, content: 'deadbeef' };
     const r = replayRefusal(old, server, here);
-    expect(r.title).toBe('Replay unavailable');
+    expect(r.title).toBe('回放不可用');
     expect(r.text).toMatch(/older version/);
     // Without a server to ask, the record gets the same benefit of nothing.
     expect(replayRefusal(old, null, here).text).toMatch(/older version/);
@@ -39,14 +39,14 @@ describe('the replay refusal', () => {
     const fresh = { version: REPLAY_VERSION, content: 'c0ffee00' };
     const newer = { version: REPLAY_VERSION, content: 'c0ffee00' };
     const r = replayRefusal(fresh, newer, here);
-    expect(r.title).toBe('This page is out of date');
-    expect(r.text).toMatch(/Reload the page/);
+    expect(r.title).toBe('页面版本过旧');
+    expect(r.text).toMatch(/刷新/);
     // A server past this page's version says the same, whatever the record.
     const later = replayRefusal(
       { version: REPLAY_VERSION + 1, content: 'x' },
       { version: REPLAY_VERSION + 1, content: 'y' },
       here,
     );
-    expect(later.title).toBe('This page is out of date');
+    expect(later.title).toBe('页面版本过旧');
   });
 });

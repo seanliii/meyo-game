@@ -23,11 +23,11 @@ const FRENZY_MS_PCT = 0.2;
 
 export const RHOKA: ChampionDef = {
   id: 'rhoka',
-  name: 'Rhoka, Wildclaw',
+  name: '罗卡, 野爪',
   role: 'Skirmisher',
   blurb: 'A diving brawler who feeds on extended fights and bleeds targets out.',
   passive: {
-    name: 'Rend',
+    name: '撕扯',
     description:
       'Attacks apply a stacking short bleed. Abilities deal 15 percent more damage per bleed ' +
       'on the target (up to 3); three bleeds fester, cutting healing. During Apex Frenzy her ' +
@@ -95,7 +95,7 @@ export const RHOKA: ChampionDef = {
   growth: { hp: 98, mana: 32, ad: 3.8, armor: 2.4, mr: 1.6 },
   abilities: {
     Q: {
-      name: 'Pounce',
+      name: '扑击',
       manaCost: 40,
       cooldown: 5.5,
       // Six, not five: a skirmisher who cannot re-enter after a step back
@@ -120,7 +120,7 @@ export const RHOKA: ChampionDef = {
       },
     },
     W: {
-      name: 'Savage Sweep',
+      name: '野蛮横扫',
       manaCost: 45,
       cooldown: 6,
       castRange: 0,
@@ -135,7 +135,7 @@ export const RHOKA: ChampionDef = {
       },
     },
     E: {
-      name: 'Primal Howl',
+      name: '原始嚎叫',
       manaCost: 40,
       cooldown: 8.5,
       castRange: 0,
@@ -149,7 +149,7 @@ export const RHOKA: ChampionDef = {
       },
     },
     R: {
-      name: 'Apex Frenzy',
+      name: '巅峰狂热',
       manaCost: 85,
       cooldown: 60,
       castRange: 0,

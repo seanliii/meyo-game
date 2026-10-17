@@ -11,7 +11,7 @@ describe('the presence line', () => {
   });
 
   it('falls back to the queue, and says nothing when nobody is on', () => {
-    expect(presenceLine({ playing: 2, queued: 1, joinable: false })).toMatch(/waiting/);
+    expect(presenceLine({ playing: 2, queued: 1, joinable: false })).toMatch(/排队/);
     expect(presenceLine({ playing: 0, queued: 2, joinable: false })).toMatch(
       /^2 people are waiting/,
     );

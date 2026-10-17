@@ -152,7 +152,7 @@ export function buildJoinLine(
 ): HTMLElement {
   ensureCss();
   const line = el('div', 'home-join');
-  const label = el('label', '', 'Have a code?');
+  const label = el('label', '', '有房间码？');
   const code = el('input', 'menu-input');
   code.id = 'home-join-code';
   label.htmlFor = code.id;
