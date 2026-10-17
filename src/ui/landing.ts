@@ -480,7 +480,7 @@ export function showLanding(
     const online = el('section', 'pg-card gold');
     online.append(
       el('h2', '', '创建免费账号'),
-      el('p', '', 'It keeps your rating and your record, and opens these.'),
+      el('p', '', '留住你的段位和战绩，解锁这些。'),
     );
     // The three the home stands at full height, wearing the paintings the
     // home gives them, standing beside the form rather than under it:
