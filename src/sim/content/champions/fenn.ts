@@ -12,11 +12,11 @@ const LUNGE_RESET_WINDOW_S = 2;
 
 export const FENN: ChampionDef = {
   id: 'fenn',
-  name: 'Fenn, the Quickblade',
+  name: '芬恩, 迅刃',
   role: 'Assassin',
   blurb: 'A single-target executioner who commits hard and finishes low targets.',
   passive: {
-    name: 'Opportunist',
+    name: '伺机而动',
     description:
       'Deals 15 percent bonus damage to enemies below 35 percent health. Takedowns on ' +
       'recently struck champions reset Lunge.',
@@ -46,7 +46,7 @@ export const FENN: ChampionDef = {
   growth: { hp: 92, mana: 35, ad: 5.5, armor: 2.2, mr: 1.6 },
   abilities: {
     Q: {
-      name: 'Lunge',
+      name: '突刺',
       manaCost: 35,
       cooldown: 5.5,
       // Seven, level with the fighter's punch (Blazing Jab): the
@@ -65,7 +65,7 @@ export const FENN: ChampionDef = {
       },
     },
     W: {
-      name: 'Twin Fangs',
+      name: '双牙',
       manaCost: 40,
       cooldown: 6,
       castRange: 8,
@@ -88,7 +88,7 @@ export const FENN: ChampionDef = {
       },
     },
     E: {
-      name: 'Smoke Veil',
+      name: '烟幕',
       manaCost: 45,
       cooldown: 10.5,
       castRange: 0,
@@ -102,7 +102,7 @@ export const FENN: ChampionDef = {
       },
     },
     R: {
-      name: 'Shadow Flurry',
+      name: '暗影连击',
       manaCost: 85,
       cooldown: 56.5,
       // The blur has to cross a screen's worth of teamfight to reach the

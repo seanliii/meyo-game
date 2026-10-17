@@ -42,7 +42,7 @@ const rings: RingClock[] = [
 describe('the objective line', () => {
   it('says the bot ring, the top ring, then the Warden, each with its aspect or LIVE', () => {
     expect(objectiveLine(rings, 720, 318)).toBe(
-      'Pyrefang LIVE Might · Voidmaul 1:12 Bulwark · Warden 6:42',
+      '燎牙 LIVE Might · 虚锤 1:12 Bulwark · Warden 6:42',
     );
     expect(objectiveLine(rings, null, 318)).toMatch(/Warden LIVE$/);
   });
@@ -75,7 +75,7 @@ describe('the objective line', () => {
     expect(objectiveLine(late, 1000, 960)).toBe(
       'Pyrefang Ascendant 2:10 · Voidmaul Ascendant LIVE · Warden 0:40',
     );
-    expect(creatureName('pyrefang', false)).toBe('Pyrefang');
+    expect(creatureName('pyrefang', false)).toBe('燎牙');
     expect(creatureName('voidmaul', true)).toBe('Voidmaul Ascendant');
   });
 
@@ -101,7 +101,7 @@ describe('the favor chips', () => {
   });
 
   it('names the creature and the aspect in a claim', () => {
-    expect(favorClaimText('pyrefang', 'tide')).toBe("Pyrefang's favor: Tide");
+    expect(favorClaimText('pyrefang', 'tide')).toBe('燎牙 的庇佑：Tide');
   });
 
   it('says what the Wrath does and how long it lasts', () => {

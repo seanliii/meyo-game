@@ -56,9 +56,9 @@ async function postReset(token: string, password: string): Promise<string | null
     });
     if (res.ok) return null;
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    return body?.error ?? 'That did not work.';
+    return body?.error ?? '没有成功，请重试。';
   } catch {
-    return 'Cannot reach the server. Check your connection.';
+    return '无法连接服务器，请检查网络。';
   }
 }
 
@@ -83,7 +83,7 @@ export function showPasswordReset(container: HTMLElement, token: string): Promis
     bar.right.appendChild(skip);
 
     hero.append(
-      el('h1', 'pg-title', 'New password'),
+      el('h1', 'pg-title', '新密码'),
       el(
         'p',
         'pg-tag',
@@ -100,42 +100,42 @@ export function showPasswordReset(container: HTMLElement, token: string): Promis
     password.type = 'password';
     password.maxLength = 200;
     password.autocomplete = 'new-password';
-    password.placeholder = 'New password';
+    password.placeholder = '新密码';
 
     const again = el('input', 'menu-input');
     again.type = 'password';
     again.maxLength = 200;
     again.autocomplete = 'new-password';
-    again.placeholder = 'The same again';
+    again.placeholder = '再输一遍密码';
 
     const error = el('p', 'auth-error');
     const ok = el('p', 'reset-ok');
-    const go = el('button', 'menu-btn primary', 'Set the password');
+    const go = el('button', 'menu-btn primary', '设置新密码');
     let busy = false;
 
     const attempt = (): void => {
       if (busy) return;
       if (password.value.length === 0) {
-        error.textContent = 'A password, please.';
+        error.textContent = '请输入密码。';
         return;
       }
       // Checked here as well as on the server: a typo in a password you
       // cannot see costs the link, and the link only works once.
       if (password.value !== again.value) {
-        error.textContent = 'Those two do not match.';
+        error.textContent = '两次输入不一致。';
         return;
       }
       busy = true;
       error.textContent = '';
-      go.textContent = 'Setting...';
+      go.textContent = '设置中…';
       void postReset(token, password.value).then((failure) => {
         busy = false;
-        go.textContent = 'Set the password';
+        go.textContent = '设置新密码';
         if (failure) {
           error.textContent = failure;
           return;
         }
-        ok.textContent = 'Done. Sign in with the new password.';
+        ok.textContent = '完成，请用新密码登录。';
         go.disabled = true;
         password.disabled = true;
         again.disabled = true;

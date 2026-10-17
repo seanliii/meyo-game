@@ -17,7 +17,7 @@ export interface SigilDef {
 // sigil read as a downgrade (gap analysis).
 const RIFTSTEP: SigilDef = {
   id: 'riftstep',
-  name: 'Riftstep',
+  name: '裂隙步',
   cooldown: 150,
   castRange: 5.5,
   spec: { kind: 'dash', range: 5.5 },
@@ -25,7 +25,7 @@ const RIFTSTEP: SigilDef = {
 
 const ZEPHYR: SigilDef = {
   id: 'zephyr',
-  name: 'Zephyr',
+  name: '和风',
   cooldown: 150,
   castRange: 0,
   spec: {
@@ -40,7 +40,7 @@ const ZEPHYR: SigilDef = {
 // button all game.
 const MEND: SigilDef = {
   id: 'mend',
-  name: 'Mend',
+  name: '愈合',
   cooldown: 150,
   castRange: 7,
   spec: {
@@ -52,7 +52,7 @@ const MEND: SigilDef = {
 
 const SEAR: SigilDef = {
   id: 'sear',
-  name: 'Sear',
+  name: '灼烧',
   cooldown: 120,
   castRange: 7,
   spec: {

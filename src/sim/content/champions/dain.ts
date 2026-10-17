@@ -12,11 +12,11 @@ const JAB_KILL_WINDOW_S = 0.6;
 
 export const DAIN: ChampionDef = {
   id: 'dain',
-  name: 'Dain, Emberfist',
+  name: '戴恩, 炽拳',
   role: 'Fighter',
   blurb: 'A brawler who wants long trades: attacks build Heat for empowered abilities.',
   passive: {
-    name: 'Heat',
+    name: '炽热',
     description:
       'Attacks build Heat (up to 4); Ember Flurry adds one. At full Heat, the next ability ' +
       'deals 25 percent bonus damage. A kill moments after his strike resets Blazing Jab.',
@@ -53,7 +53,7 @@ export const DAIN: ChampionDef = {
   growth: { hp: 100, mana: 30, ad: 3.8, armor: 2.6, mr: 1.8 },
   abilities: {
     Q: {
-      name: 'Blazing Jab',
+      name: '炽焰突刺',
       manaCost: 30,
       cooldown: 4,
       castRange: 7,
@@ -85,7 +85,7 @@ export const DAIN: ChampionDef = {
       },
     },
     W: {
-      name: 'Cinder Guard',
+      name: '余烬守卫',
       manaCost: 45,
       cooldown: 9,
       castRange: 6.5,
@@ -124,7 +124,7 @@ export const DAIN: ChampionDef = {
       },
     },
     E: {
-      name: 'Ember Flurry',
+      name: '余烬旋舞',
       manaCost: 30,
       cooldown: 7,
       castRange: 0,
@@ -145,7 +145,7 @@ export const DAIN: ChampionDef = {
       },
     },
     R: {
-      name: 'Emberfall',
+      name: '烬落',
       manaCost: 75,
       cooldown: 60,
       castRange: 6,

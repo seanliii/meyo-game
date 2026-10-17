@@ -12,11 +12,11 @@ const SPRING_TIDE_RANGE = 6;
 
 export const MAERA: ChampionDef = {
   id: 'maera',
-  name: 'Maera, Tidecaller',
+  name: '梅拉, 唤潮者',
   role: 'Support',
   blurb: 'Sustain and wave-shaped utility: keeps the team standing.',
   passive: {
-    name: 'Spring Tide',
+    name: '春潮',
     description: 'Her heals splash 35 percent of the amount onto the nearest other ally.',
     onHealGiven(ctx, self, target, amount) {
       let best: typeof target | null = null;
@@ -52,7 +52,7 @@ export const MAERA: ChampionDef = {
   growth: { hp: 85, mana: 50, ad: 2.5, armor: 2.3, mr: 1.5 },
   abilities: {
     Q: {
-      name: 'Tide Surge',
+      name: '潮涌',
       manaCost: 50,
       cooldown: 7,
       castRange: 9,
@@ -67,7 +67,7 @@ export const MAERA: ChampionDef = {
       },
     },
     W: {
-      name: 'Rising Spring',
+      name: '升腾之泉',
       manaCost: 60,
       cooldown: 10,
       castRange: 8,
@@ -88,7 +88,7 @@ export const MAERA: ChampionDef = {
       },
     },
     E: {
-      name: 'Undertow',
+      name: '暗流',
       manaCost: 45,
       cooldown: 7,
       castRange: 8,
@@ -105,7 +105,7 @@ export const MAERA: ChampionDef = {
       },
     },
     R: {
-      name: 'Great Wave',
+      name: '巨浪',
       manaCost: 85,
       cooldown: 67.5,
       castRange: 10,

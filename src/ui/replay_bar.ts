@@ -217,23 +217,23 @@ export function buildReplayBar(opts: {
     if (tell) opts.onSpeed(mult);
   };
 
-  btn(`-${SEEK_STEP_S}s`, 'Five seconds back (left arrow; shift for thirty)', () =>
+  btn(`-${SEEK_STEP_S}s`, '回退五秒（左方向键；shift 三十秒）', () =>
     opts.onSeek(current - SEEK_STEP_S * TICKS_PER_S),
   );
   sep();
-  speed('4x', -4, 'Play backward at four times (J)');
-  speed('2x', -2, 'Play backward at twice (J)');
-  speed('1x', -1, 'Play backward (J)');
+  speed('4x', -4, '四倍速倒放（J）');
+  speed('2x', -2, '二倍速倒放（J）');
+  speed('1x', -1, '倒放（J）');
   speedBtns.get(-4)!.textContent = '◀ 4x';
   speedBtns.get(-2)!.textContent = '◀ 2x';
   speedBtns.get(-1)!.textContent = '◀ 1x';
   speed('‖', 0, 'Pause (K or space)');
-  speed('1x', 1, 'Play (L)');
-  speed('2x', 2, 'Play at twice (L)');
-  speed('4x', 4, 'Play at four times (L)');
-  speed('10x', 10, 'Play at ten times (L)');
+  speed('1x', 1, '播放（L）');
+  speed('2x', 2, '二倍速播放（L）');
+  speed('4x', 4, '四倍速播放（L）');
+  speed('10x', 10, '十倍速播放（L）');
   sep();
-  btn(`+${SEEK_STEP_S}s`, 'Five seconds forward (right arrow; shift for thirty)', () =>
+  btn(`+${SEEK_STEP_S}s`, '前进五秒（右方向键；shift 三十秒）', () =>
     opts.onSeek(current + SEEK_STEP_S * TICKS_PER_S),
   );
   setSpeed(1, false);
@@ -245,7 +245,7 @@ export function buildReplayBar(opts: {
   const goto = document.createElement('input');
   goto.className = 'replay-goto replay-hideable';
   goto.placeholder = 'm:ss';
-  goto.title = 'Jump to a time (m:ss), Enter to go';
+  goto.title = '跳转到时间点（分:秒），回车执行';
   goto.maxLength = 7;
   goto.addEventListener('keydown', (e) => {
     // The HUD's keybinds must not fire while a time is being typed.
@@ -261,14 +261,14 @@ export function buildReplayBar(opts: {
   row.appendChild(goto);
   const keys = document.createElement('span');
   keys.className = 'replay-keys replay-hideable';
-  keys.textContent = 'J K L, arrows, comma and period, H hides';
+  keys.textContent = 'J K L、方向键、逗号句号，H 收起';
   keys.title =
     'J plays backward, K pauses, L plays forward (again for faster); arrows step five ' +
     'seconds (shift: thirty); comma and period step one tick while paused; space pauses; ' +
-    'H hides the bar down to its handle';
+    '按 H 把控制条收起只留把手';
   row.appendChild(keys);
 
-  const exit = btn('Exit replay', 'Leave the replay', opts.onExit);
+  const exit = btn('退出回放', '离开回放', opts.onExit);
   exit.classList.add('replay-exit');
   // The way out stays whatever is folded away: nobody should have to
   // unfold the bar to leave the replay.
@@ -331,7 +331,7 @@ export function buildReplayBar(opts: {
       case 'warden':
         return `${by} slew the Warden`;
       case 'creature':
-        return `${by} slew the ${m.creature ? creatureName(m.creature, m.ascendant === true) : 'ring creature'}`;
+        return `${by} slew the ${m.creature ? creatureName(m.creature, m.ascendant === true) : '野区巨兽'}`;
       case 'wrath':
         return `${m.team === 0 ? 'Blue' : 'Red'} holds the Wrath${m.creature ? ` (${creatureName(m.creature, true)})` : ''}`;
     }

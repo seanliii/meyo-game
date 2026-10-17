@@ -243,7 +243,10 @@ describe('suggestKit', () => {
     let calls = 0;
     const foreign = {
       ...flavored,
-      abilities: { ...flavored.abilities, W: { ...GOOD_KIT.abilities.W, flavor: 'Un éclat.' } },
+      abilities: {
+        ...flavored.abilities,
+        W: { ...GOOD_KIT.abilities.W, flavor: 'Un éclat.\u0007' },
+      },
     };
     const fetchFn: typeof fetch = async () => {
       calls += 1;
@@ -575,13 +578,13 @@ describe('the stream', () => {
     expect(imageMediaType(Buffer.from('GIF89a'))).toBe('image/gif');
   });
 
-  it('sends names that are not plain English back, whatever the creator spoke', async () => {
+  it('sends names with control characters back, whatever the creator spoke', async () => {
     const store = seeded();
     const accented = {
       passive: GOOD_KIT.passive,
       abilities: { ...GOOD_KIT.abilities, Q: { ...GOOD_KIT.abilities.Q, name: 'Epee de Givre' } },
     };
-    (accented.abilities.Q as { name: string }).name = '\u00c9p\u00e9e de Givre';
+    (accented.abilities.Q as { name: string }).name = '\u00c9p\u00e9e\nde Givre';
     let n = 0;
     const feedback: string[] = [];
     const fetchFn = ((_u: string, init?: RequestInit) => {
@@ -600,8 +603,8 @@ describe('the stream', () => {
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.abilities.Q.name).toBe(GOOD_KIT.abilities.Q.name);
     expect(n).toBe(2);
-    expect(feedback[1]).toContain('English');
-    expect(feedback[1]).toContain('\u00c9p\u00e9e de Givre');
+    expect(feedback[1]).toContain('control characters');
+    expect(feedback[1]).toContain('Givre');
     store.close();
   });
 });

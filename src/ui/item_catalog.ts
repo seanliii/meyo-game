@@ -59,9 +59,9 @@ function ensureCss(): void {
 }
 
 const SECTIONS: readonly (readonly [1 | 2 | 3, string])[] = [
-  [1, 'Components'],
-  [2, 'Finished items, built from two components'],
-  [3, 'Legendary upgrades, built from a finished item'],
+  [1, '基础件'],
+  [2, '成型装：由两件基础件合成'],
+  [3, '传说装：由成型装升级'],
 ];
 
 // One card: the icon, the name, the recipe as small icons, the price; the

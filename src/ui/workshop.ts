@@ -545,7 +545,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
     return true;
   };
 
-  // --- 'Hold it here': click the weapon where the hand should hold it ---
+  // --- '固定在这里': click the weapon where the hand should hold it ---
 
   let aiming = false;
   let setAimButton: (on: boolean) => void = () => {};
@@ -556,7 +556,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
     setAimButton(on);
   };
   // Put `gripLocal` (a point in prop space) in the fist, blade along the
-  // hand's grip axis. Shared by the click ('Hold it here') and by the
+  // hand's grip axis. Shared by the click ('固定在这里') and by the
   // automatic placement, so a placed weapon and an aimed one land
   // through the same arithmetic. False when there is no prop to fit.
   const fitGrip = (gripLocal: THREE.Vector3 | null): boolean => {
@@ -635,7 +635,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
   // nobody hunts under Animations while placing a weapon).
   let frozen = false;
   let fadingAction: THREE.AnimationAction | null = null;
-  const freezeBtn = el('button', 'ws-btn', 'Freeze the pose') as HTMLButtonElement;
+  const freezeBtn = el('button', 'ws-btn', '定格姿态') as HTMLButtonElement;
   freezeBtn.title = 'Hold the model still on this frame while you fit the weapon (F)';
   const frameRow = el('div', 'ws-slider');
   const frameInput = document.createElement('input');
@@ -662,7 +662,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
   const setFrozen = (on: boolean): void => {
     frozen = on;
     freezeBtn.classList.toggle('picked', on);
-    freezeBtn.textContent = on ? 'Release the pose' : 'Freeze the pose';
+    freezeBtn.textContent = on ? 'Release the pose' : '定格姿态';
     frameRow.hidden = !on;
     if (!mixer) return;
     mixer.timeScale = on ? 0 : 1;
@@ -1051,10 +1051,10 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
       );
     }
 
-    // 'Hold it here' is the fast path: arm it, click the weapon where
+    // '固定在这里' is the fast path: arm it, click the weapon where
     // the hand should hold it, and the grip snaps into the fist with the
     // blade along the hand's grip axis (orient.ts does the math).
-    const holdBtn = el('button', 'ws-btn', 'Hold it here') as HTMLButtonElement;
+    const holdBtn = el('button', 'ws-btn', '固定在这里') as HTMLButtonElement;
     holdBtn.addEventListener('click', () => setAiming(!aiming));
     setAimButton = (on) => holdBtn.classList.toggle('picked', on);
 
@@ -1233,7 +1233,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
     const save = el('button', 'ws-save', 'Save the tuning') as HTMLButtonElement;
     save.addEventListener('click', () => {
       save.disabled = true;
-      status.textContent = 'Saving...';
+      status.textContent = '保存中…';
       const display: ForgedDisplay = {
         height: tuning.height,
         yOffset: tuning.yOffset,
@@ -1259,12 +1259,12 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
             status.textContent = 'Saved: matches now use this tuning.';
             subject.onSaved?.(display);
           } else {
-            status.textContent = r?.error ?? 'save failed';
+            status.textContent = r?.error ?? '保存失败';
           }
         })
         .catch(() => {
           save.disabled = false;
-          status.textContent = 'save failed';
+          status.textContent = '保存失败';
         });
     });
     weaponPanel.append(save, status);
@@ -1308,7 +1308,7 @@ export function openWorkshop(container: HTMLElement, subject: WorkshopSubject): 
   let anyArt = false;
   for (const [label, url] of [
     ['Splash', subject.splashUrl],
-    ['Model reference', subject.sheetUrl],
+    ['模型参考', subject.sheetUrl],
   ] as const) {
     if (!url) continue;
     anyArt = true;

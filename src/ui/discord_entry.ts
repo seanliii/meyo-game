@@ -77,7 +77,7 @@ export function buildDiscordEntry(result: DiscordResult | null): HTMLElement {
   ensureCss();
   const row = el('div', 'dsc-row');
   row.hidden = true;
-  const go = el('button', 'menu-btn dsc-btn', 'Continue with Discord');
+  const go = el('button', 'menu-btn dsc-btn', '用 Discord 继续');
   const said = el('p', 'dsc-said');
   said.textContent =
     result === 'failed'
@@ -86,7 +86,7 @@ export function buildDiscordEntry(result: DiscordResult | null): HTMLElement {
   row.append(go, said);
   go.addEventListener('click', () => {
     go.disabled = true;
-    go.textContent = 'Off to Discord...';
+    go.textContent = '正在跳转 Discord…';
     window.location.assign('/api/discord/start');
   });
   void fetchDiscordConfigured().then((configured) => {

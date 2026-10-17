@@ -12,11 +12,11 @@ const BACKSTEP_PATCH_DURATION_S = 1.5;
 
 export const VESK: ChampionDef = {
   id: 'vesk',
-  name: 'Vesk, the Longshot',
+  name: '维斯克, 远射',
   role: 'Marksman',
   blurb: 'Artillery range, immobile and terrifying: punishes anything held still.',
   passive: {
-    name: 'Deadstill',
+    name: '死寂',
     description: 'Attacks deal 15 percent bonus damage to slowed or immobilized targets.',
     modifyDamage(ctx, _self, target, amount, _dtype, via) {
       if (via !== 'attack') return amount;
@@ -72,7 +72,7 @@ export const VESK: ChampionDef = {
   growth: { hp: 88, mana: 32, ad: 5.5, armor: 2, mr: 1.3 },
   abilities: {
     Q: {
-      name: 'Piercing Round',
+      name: '穿透弹',
       manaCost: 45,
       cooldown: 6,
       castRange: 14,
@@ -97,7 +97,7 @@ export const VESK: ChampionDef = {
       },
     },
     W: {
-      name: 'Caltrops',
+      name: '铁蒺藜',
       manaCost: 50,
       cooldown: 9,
       castRange: 8,
@@ -113,7 +113,7 @@ export const VESK: ChampionDef = {
       },
     },
     E: {
-      name: 'Backstep',
+      name: '后撤步',
       manaCost: 35,
       cooldown: 7.5,
       castRange: 3,
@@ -126,7 +126,7 @@ export const VESK: ChampionDef = {
       },
     },
     R: {
-      name: 'Horizon Shot',
+      name: '天际射击',
       manaCost: 85,
       cooldown: 67.5,
       // Map-crossing artillery (the map is 150 across): the shot itself is

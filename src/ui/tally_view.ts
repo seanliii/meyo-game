@@ -50,7 +50,7 @@ export function tallyRow(label: string, t: Tally, rated = false): HTMLElement {
   const row = el('div', rated ? 'tv-row rated' : 'tv-row');
   row.append(el('span', 'tv-kind', label));
   if (t.games === 0) {
-    row.append(el('span', 'tv-none', 'no match yet'));
+    row.append(el('span', 'tv-none', '还没有对局'));
     return row;
   }
   const score = el('span', 'tv-score');
@@ -73,11 +73,11 @@ export function buildTallyView(t: RecordTallies): HTMLElement {
   ensureCss();
   const box = el('div', 'tv');
   box.append(
-    tallyRow('Rated', t.rated, true),
-    tallyRow('Arena', t.arena),
+    tallyRow('计段', t.rated, true),
+    tallyRow('竞技场', t.arena),
     tallyRow('Live', t.live),
-    tallyRow('Sparring', t.sparring),
-    tallyRow('Series', t.series),
+    tallyRow('切磋', t.sparring),
+    tallyRow('系列赛', t.series),
   );
   return box;
 }

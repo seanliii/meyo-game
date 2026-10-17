@@ -179,7 +179,7 @@ function tierColor(tier: 1 | 2 | 3): string {
 }
 
 function _tierName(tier: 1 | 2 | 3): string {
-  return tier === 1 ? 'Component' : tier === 2 ? 'Finished item' : 'Legendary';
+  return tier === 1 ? '基础件' : tier === 2 ? '成型装' : '传说装';
 }
 
 function paintCard(
@@ -398,7 +398,7 @@ function paintDetail(
   };
 
   if (d.buildsFrom.length > 0) {
-    drawText(ctx, 'BUILD PATH', pane.x + 4 * k, y, {
+    drawText(ctx, '合成路线', pane.x + 4 * k, y, {
       font: `600 ${9.5 * k}px ${FONT_BODY}`,
       fill: 'rgba(170,192,220,0.8)',
       track: 1.4 * k,
@@ -428,7 +428,7 @@ function paintDetail(
     y += 54 * k;
   }
   if (d.buildsInto.length > 0) {
-    drawText(ctx, 'BUILDS INTO', pane.x + 4 * k, y, {
+    drawText(ctx, '可合成', pane.x + 4 * k, y, {
       font: `600 ${9.5 * k}px ${FONT_BODY}`,
       fill: 'rgba(170,192,220,0.8)',
       track: 1.4 * k,
@@ -565,7 +565,7 @@ export function paintShop(
     rim: hoverClose ? 'rgba(220,236,255,0.6)' : 'rgba(150,180,216,0.35)',
   });
   // Esc closes the shop too; the keycap only needs to name one of them.
-  drawText(ctx, 'CLOSE (P)', L.close.x + L.close.w / 2, L.close.y + L.close.h / 2 + 4 * k, {
+  drawText(ctx, '关闭 (P)', L.close.x + L.close.w / 2, L.close.y + L.close.h / 2 + 4 * k, {
     font: `600 ${11 * k}px ${FONT_BODY}`,
     fill: '#dbe7f6',
     align: 'center',
@@ -891,7 +891,7 @@ export function paintEnd(
       glowBlur: 8 * k,
     });
   };
-  banner(L.again, 'Play again', true, end.hover === 'again');
+  banner(L.again, '再来一局', true, end.hover === 'again');
   banner(L.menu, 'Return to menu', false, end.hover === 'menu');
 
   drawText(

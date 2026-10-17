@@ -103,16 +103,16 @@ async function submit(
       body: JSON.stringify(mode === 'login' ? { name, password } : { name, password, email }),
     });
   } catch {
-    return { ok: false, error: 'Cannot reach the server. Check your connection.' };
+    return { ok: false, error: '无法连接服务器，请检查网络。' };
   }
   let body: { error?: string } & Partial<AuthedAccount>;
   try {
     body = (await res.json()) as typeof body;
   } catch {
-    return { ok: false, error: 'The server answered with something unreadable.' };
+    return { ok: false, error: '服务器返回了无法识别的内容。' };
   }
   if (!res.ok || typeof body.name !== 'string') {
-    return { ok: false, error: body.error ?? 'That did not work.' };
+    return { ok: false, error: body.error ?? '没有成功，请重试。' };
   }
   return { ok: true, account: body as AuthedAccount };
 }
@@ -131,11 +131,11 @@ export async function requestReset(email: string): Promise<string | null> {
     });
     if (res.status === 429) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
-      return body?.error ?? 'Too many requests. Try again shortly.';
+      return body?.error ?? '请求太频繁，请稍后再试。';
     }
     return null;
   } catch {
-    return 'Cannot reach the server. Check your connection.';
+    return '无法连接服务器，请检查网络。';
   }
 }
 
@@ -167,42 +167,42 @@ export function buildAuthForm(
   let formCounted = false;
 
   const tabs = el('div', 'auth-tabs');
-  const loginTab = el('button', 'auth-tab on', 'Sign in');
-  const registerTab = el('button', 'auth-tab', 'Create account');
+  const loginTab = el('button', 'auth-tab on', '登录');
+  const registerTab = el('button', 'auth-tab', '注册账号');
   tabs.append(loginTab, registerTab);
 
   const name = el('input', 'menu-input');
   name.maxLength = 16;
   name.autocomplete = 'username';
-  name.placeholder = 'Your name';
+  name.placeholder = '你的名字';
 
   const email = el('input', 'menu-input');
   email.type = 'email';
   email.maxLength = 254;
   email.autocomplete = 'email';
-  email.placeholder = 'Email address';
+  email.placeholder = '邮箱地址';
 
   const password = el('input', 'menu-input');
   password.type = 'password';
   password.maxLength = 200;
   password.autocomplete = 'current-password';
-  password.placeholder = 'Password';
+  password.placeholder = '密码';
 
   const error = el('p', 'auth-error');
-  const go = el('button', 'menu-btn primary', 'Sign in');
+  const go = el('button', 'menu-btn primary', '登录');
   const note = el('p', 'auth-note');
-  const alt = el('button', 'auth-alt', 'Forgot your password?');
+  const alt = el('button', 'auth-alt', '忘记密码？');
 
   // The Discord door (ADR 0009). Not shown in this deployment: the
-  // visitor's only doors are the game's own.
+  // visitor'的唯一入口就是游戏本身's own.
   const discordBox = el('div', 'auth-discord');
 
   root.append(tabs, name, email, password, error, go, alt, note, discordBox);
 
   const LABELS: Record<Mode, { go: string; busy: string }> = {
-    login: { go: 'Sign in', busy: 'Signing in...' },
-    register: { go: 'Create account', busy: 'Creating...' },
-    forgot: { go: 'Send a reset link', busy: 'Sending...' },
+    login: { go: '登录', busy: '登录中…' },
+    register: { go: '注册账号', busy: '创建中…' },
+    forgot: { go: '发送重置链接', busy: '发送中…' },
   };
 
   const setMode = (next: Mode): void => {
@@ -223,7 +223,7 @@ export function buildAuthForm(
     go.textContent = LABELS[next].go;
     password.autocomplete = next === 'login' ? 'current-password' : 'new-password';
     alt.hidden = next === 'register';
-    alt.textContent = next === 'forgot' ? 'Back to signing in' : 'Forgot your password?';
+    alt.textContent = next === 'forgot' ? '返回登录' : '忘记密码？';
     note.textContent =
       next === 'register'
         ? 'Letters, digits, _ and - , 3 to 16 characters. No email needed: you can add one ' +
@@ -244,7 +244,7 @@ export function buildAuthForm(
 
     if (mode === 'forgot') {
       if (typedEmail.length === 0) {
-        error.textContent = 'Your email address, please.';
+        error.textContent = '请输入你的邮箱。';
         return;
       }
       busy = true;
@@ -260,14 +260,14 @@ export function buildAuthForm(
         // Deliberately the same words whether or not anything was found.
         note.textContent =
           'If that address is on a confirmed account, a reset link is on its way. ' +
-          'The link works once and expires in an hour.';
+          '链接只能使用一次，一小时内有效。';
         go.disabled = true;
       });
       return;
     }
 
     if (typedName.length === 0 || typedPassword.length === 0) {
-      error.textContent = 'Both fields, please.';
+      error.textContent = '请填写两项内容。';
       return;
     }
     busy = true;

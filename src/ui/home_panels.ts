@@ -217,7 +217,7 @@ function ensureCss(): void {
   document.head.appendChild(style);
 }
 
-const UNREACHABLE = 'Unavailable: the game server is not reachable.';
+const UNREACHABLE = '暂不可用：连不上游戏服务器。';
 
 function champName(id: string): string {
   return (CHAMPIONS[id]?.name ?? id).split(',')[0] ?? id;
@@ -298,14 +298,14 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
   ensureCss();
   const root = el('section', 'home-panels');
   const you = panel('hp-you gold', o.name);
-  const ladder = panel('hp-ladder', 'The ladder');
-  const bots = panel('hp-bots', 'Top bots');
-  const forged = panel('hp-forged', 'Latest from the Forge');
+  const ladder = panel('hp-ladder', '天梯');
+  const bots = panel('hp-bots', '机器人排行');
+  const forged = panel('hp-forged', '锻造馆最新作品');
   root.append(you.root, ladder.root, bots.root, forged.root);
 
   const renderYou = (page: HomePage): void => {
     const me = page.me;
-    you.sub.textContent = 'Your place';
+    you.sub.textContent = '你的位置';
     setMore(you, 'Career', o.openCareer);
     you.body.textContent = '';
     const hand = me.places.hand;
@@ -346,9 +346,7 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
           ),
         );
       }
-      cells.append(
-        cell(kdaPerMatch(c.kills, c.deaths, c.assists, c.games), 'K/D/A per match', true),
-      );
+      cells.append(cell(kdaPerMatch(c.kills, c.deaths, c.assists, c.games), '场均 K/D/A', true));
     }
     if (me.bots.total > 0) {
       cells.append(
@@ -384,7 +382,7 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
 
   const renderLadder = (page: HomePage): void => {
     const l = page.ladder;
-    ladder.sub.textContent = l.total > 0 ? `By hand, ${l.total} placed` : 'By hand';
+    ladder.sub.textContent = l.total > 0 ? `By hand, ${l.total} placed` : '手动操盘';
     setMore(ladder, 'Open', () => o.openLadder('hand'));
     ladder.body.textContent = '';
     if (l.rows.length === 0) {
@@ -403,7 +401,7 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
 
   const renderBots = (page: HomePage): void => {
     const b = page.bots;
-    const where = b.way === 'arena' ? 'The Arena' : 'Live';
+    const where = b.way === 'arena' ? '竞技场' : 'Live';
     bots.sub.textContent = b.total > 0 ? `${where}, ${b.total} placed` : where;
     bots.body.textContent = '';
     if (b.rows.length === 0) {
@@ -441,14 +439,14 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
   const renderForged = (page: HomePage): void => {
     forged.body.textContent = '';
     if (page.forged.length === 0) {
-      forged.sub.textContent = 'Champions sealed in the Forge';
+      forged.sub.textContent = '锻造馆封存的英雄';
       setMore(forged, 'Forge', o.openForge);
       forged.body.append(
         el('p', 'hp-empty', 'Nothing forged yet. Build a champion in the Forge and seal it.'),
       );
       return;
     }
-    forged.sub.textContent = 'The newest champions sealed, from every creator';
+    forged.sub.textContent = '所有创作者最新封存的英雄';
     setMore(forged, 'Gallery', () => o.openGallery());
     const cards = el('div', 'hp-cards');
     for (const f of page.forged) {
@@ -464,7 +462,7 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
       } else {
         card.append(el('div', 'hp-mono', (f.name[0] ?? '?').toUpperCase()));
       }
-      if (f.mine) card.append(el('span', 'hp-mine', 'Yours'));
+      if (f.mine) card.append(el('span', 'hp-mine', '你的'));
       card.append(el('span', 'hp-likes', `${f.likes} ${f.likes === 1 ? 'like' : 'likes'}`));
       const body = el('div', 'hp-card-body');
       const meta = el('div', 'hp-card-meta');
@@ -492,7 +490,7 @@ export function buildHomePanels(o: HomePanelsOptions): HomePanels {
     try {
       render();
     } catch {
-      say(p, 'This panel could not be drawn.');
+      say(p, '该面板暂时无法显示。');
     }
   };
 

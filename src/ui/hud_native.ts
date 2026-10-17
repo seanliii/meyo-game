@@ -68,7 +68,7 @@ export interface SlotView {
   // cooldown still to run for the sweep.
   cd: string | null;
   cdFrac: number;
-  // The socket wears the "waiting on a level" read instead of a sweep.
+  // The socket wears the "等待升级" read instead of a sweep.
   locked: string | null;
   canRank: boolean;
   nomana: boolean;
@@ -408,7 +408,7 @@ function socket(
     // lifted 1.04 then washed 0.42 cold on top of art that is already dark,
     // and Q/W/E read as three empty black wells — the icon, the one thing
     // that tells the player which spell is which, was gone. Unlearned now
-    // keeps a readable icon and only *tints* cold, so "not learned yet" is
+    // keeps a readable icon and only *tints* cold, so "尚未学习" is
     // legible instead of invisible.
     drawArtLit(ctx, img, gr.x, gr.y, gr.w, gr.h, 3 * k, lit ? 1.5 : 1.16, lit ? 1.12 : 0.7);
     if (!lit) {
@@ -742,7 +742,7 @@ function paintRail(
     glowBlur: 8 * k,
   });
 
-  // Health, then mana under it: the two reads that answer "can I fight".
+  // Health, then mana under it: the two reads that answer "能不能打".
   const barX = b.x + 68 * k;
   const barW = b.w - (68 + 118) * k;
   const hpR = rect(barX, b.y + 58 * k, barW, 16 * k);

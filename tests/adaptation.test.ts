@@ -156,7 +156,7 @@ describe('the lineup triggers', () => {
     expect(describeTrigger({ kind: 'roles', side: 'enemy', role: 'Mage', atLeast: 2 })).toBe(
       'the enemy fields at least 2 mage',
     );
-    expect(describeTrigger({ kind: 'laneOpponent', is: 'vesk' })).toMatch(/Vesk/);
+    expect(describeTrigger({ kind: 'laneOpponent', is: 'vesk' })).toMatch(/维斯克/);
   });
 
   it('are refused with a bad side, role, item or champion', () => {

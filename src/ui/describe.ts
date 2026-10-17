@@ -42,7 +42,7 @@ function amount(base: number, adRatio: number, apRatio: number, cls: string): st
   return s;
 }
 
-// "a, b and c": clauses joined the way a sentence would.
+// "a、b 和 c": clauses joined the way a sentence would.
 function joinAnd(parts: string[]): string {
   if (parts.length <= 1) return parts[0] ?? '';
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
@@ -57,17 +57,17 @@ function predicatePhrase(p: EffectPredicate): string {
     case 'targetHpBelow':
       return `against targets under ${span('tt-cc', pct(p.frac))} health`;
     case 'targetDying':
-      return 'if the blow kills';
+      return '若这一击造成击杀';
     case 'targetIsolated':
       return `against a target with no ally within ${p.radius}`;
     case 'targetSlowed':
-      return 'against an already impaired target';
+      return '对已被控制的目标';
     case 'targetNearTerrain':
-      return 'against a target caught at a wall';
+      return '对被卡在墙边的目标';
     case 'targetIsChampion':
-      return 'if a champion is hit';
+      return '若命中英雄';
     case 'targetHasSourceDot':
-      return 'against prey you set bleeding';
+      return '对被你施加流血的目标';
     case 'withinCenter':
       return `at the epicenter (within ${p.radius})`;
   }
@@ -90,9 +90,9 @@ function clause(e: EffectSpec): string {
         const onExpire = e.burst.onExpire ?? [];
         const when =
           onBreak.length > 0 && onExpire.length > 0
-            ? 'breaks or expires'
+            ? '被打断或到期'
             : onBreak.length > 0
-              ? 'is broken'
+              ? '被打断'
               : 'expires';
         const payload = joinAnd((onBreak.length > 0 ? onBreak : onExpire).map(clause));
         s += `; when it ${when}, it detonates (radius ${e.burst.radius}): ${payload}`;
@@ -167,9 +167,7 @@ const sentence = (list: readonly EffectSpec[] | undefined): string =>
 function describeCast(spec: CastSpec, castRange: number): string[] {
   switch (spec.kind) {
     case 'skillshot': {
-      const flight = spec.pierce
-        ? 'piercing every enemy in its path'
-        : 'stopping on the first enemy hit';
+      const flight = spec.pierce ? '贯穿路径上的每一个敌人' : '命中第一个敌人即停';
       const lines = [`Hurls a bolt up to ${spec.range} away, ${flight}: ${sentence(spec.onHit)}.`];
       if (spec.allyEffects?.length) {
         lines.push(`Allies it washes over: ${sentence(spec.allyEffects)}.`);
@@ -206,7 +204,7 @@ function describeCast(spec: CastSpec, castRange: number): string[] {
       if (spec.allyOnTick?.length) {
         lines.push(`Allies inside, every ${spec.tickEvery ?? 0.5}s: ${sentence(spec.allyOnTick)}.`);
       }
-      if (spec.reveal) lines.push('Its area is revealed, brush and stealth included.');
+      if (spec.reveal) lines.push('区域被揭示，草丛与隐身无所遁形。');
       if (spec.boundary) {
         lines.push(
           `Enemies walking out through the rim: ${sentence(spec.boundary.effects)} ` +

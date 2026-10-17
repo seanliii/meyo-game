@@ -95,7 +95,7 @@ function el(tag: string, cls: string, text?: string): HTMLElement {
   return e;
 }
 
-const NO_CAREER = 'Play an online match to start your career.';
+const NO_CAREER = '打一场在线对局，开启你的生涯。';
 
 // Shared by the own-career panel and the ladder's public profiles.
 export function renderProfile(box: HTMLElement, data: ApiProfile): void {
@@ -104,7 +104,7 @@ export function renderProfile(box: HTMLElement, data: ApiProfile): void {
   const rated =
     data.ratedGames > 0
       ? `${tierOf(data.rating).name}, rating ${data.rating} over ${data.ratedGames} rated match${data.ratedGames > 1 ? 'es' : ''}.`
-      : 'Unrated: a match is rated with a human on each side.';
+      : '不计段位：只有双方都有真人时才计入段位。';
   box.append(el('div', 'prof-sub', rated));
   // The balance lives here, on the account, because the Forge and the
   // Academy both spend it and it belongs to neither (ADR 0017).
@@ -137,7 +137,7 @@ export function renderProfile(box: HTMLElement, data: ApiProfile): void {
   }
   const p = data.profile;
   if (p.games === 0) {
-    box.append(el('div', 'prof-sub', 'No online matches recorded yet.'));
+    box.append(el('div', 'prof-sub', '还没有在线对局记录。'));
     return;
   }
   const winPct = Math.round((100 * p.wins) / p.games);
@@ -168,7 +168,7 @@ export function renderProfile(box: HTMLElement, data: ApiProfile): void {
     );
     box.appendChild(line);
   }
-  box.append(el('div', 'prof-section', 'Recent matches'));
+  box.append(el('div', 'prof-section', '最近对局'));
   for (const m of p.recent) {
     const line = el('div', 'prof-line');
     const left = el('span', '');
@@ -214,7 +214,7 @@ export function renderProfile(box: HTMLElement, data: ApiProfile): void {
 
 export function buildProfilePanel(): HTMLElement {
   ensureCss();
-  const box = el('div', 'prof-panel', 'Loading career...');
+  const box = el('div', 'prof-panel', '生涯加载中…');
   // The session cookie is the identity and rides the request on its own;
   // it used to be a token in the query string, where it landed in the
   // proxy's access log and the browser's history (ADR 0006).
@@ -233,12 +233,12 @@ export function buildProfilePanel(): HTMLElement {
 // A public player card by id, used by the ladder rows.
 export function buildPublicProfilePanel(accountId: number): HTMLElement {
   ensureCss();
-  const box = el('div', 'prof-panel', 'Loading player...');
+  const box = el('div', 'prof-panel', '玩家加载中…');
   fetch(`/api/account/${accountId}`)
     .then((r) => (r.ok ? (r.json() as Promise<ApiProfile>) : null))
     .then((data) => {
       if (data) renderProfile(box, data);
-      else box.textContent = 'Unknown player.';
+      else box.textContent = '找不到该玩家。';
     })
     .catch(() => {
       box.textContent = 'Player unavailable: the game server is not reachable.';

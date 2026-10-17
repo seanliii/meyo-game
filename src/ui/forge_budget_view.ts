@@ -179,7 +179,7 @@ export function kitOverview(): LiveView<ForgedChampionDef> {
   const root = h('div', 'fe-kit');
   const head = h('div', 'fe-kit-head');
   const headNum = h('span', '', '');
-  head.append(h('b', '', 'Kit envelope'), headNum);
+  head.append(h('b', '', '技能包络'), headNum);
   const bar = h('div', 'fe-seg-bar');
   const segs = {} as Record<KitPart, HTMLElement>;
   for (const part of KIT_PARTS) {

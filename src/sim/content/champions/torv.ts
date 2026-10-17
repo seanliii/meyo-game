@@ -14,11 +14,11 @@ const BULWARK_DURATION_S = 0.4;
 
 export const TORV: ChampionDef = {
   id: 'torv',
-  name: 'Torv, Stonehorn',
+  name: '托夫, 石角',
   role: 'Support',
   blurb: 'The one who starts the fight: engage, disruption, and a protective aura.',
   passive: {
-    name: 'Bulwark Aura',
+    name: '壁垒光环',
     description: 'Nearby allied champions gain 8 bonus armor.',
     onTick(ctx, self) {
       for (const u of ctx.units.values()) {
@@ -47,7 +47,7 @@ export const TORV: ChampionDef = {
   growth: { hp: 92, mana: 35, ad: 3.2, armor: 3.2, mr: 2 },
   abilities: {
     Q: {
-      name: 'Horn Charge',
+      name: '犄角冲锋',
       manaCost: 45,
       cooldown: 7.5,
       // Six, the roster's melee engage floor: the charge is Torv's only
@@ -73,7 +73,7 @@ export const TORV: ChampionDef = {
       },
     },
     W: {
-      name: 'Challenge',
+      name: '挑战',
       manaCost: 50,
       cooldown: 10.5,
       castRange: 0,
@@ -86,7 +86,7 @@ export const TORV: ChampionDef = {
       },
     },
     E: {
-      name: 'Tremor Stomp',
+      name: '震地践踏',
       manaCost: 40,
       cooldown: 6,
       castRange: 0,
@@ -109,7 +109,7 @@ export const TORV: ChampionDef = {
       },
     },
     R: {
-      name: 'Faultline',
+      name: '断层',
       manaCost: 85,
       cooldown: 67.5,
       castRange: 9,

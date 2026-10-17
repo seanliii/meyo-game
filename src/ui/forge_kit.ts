@@ -369,27 +369,27 @@ const CAST_KINDS = Object.keys(CAST_BOUNDS) as CastSpec['kind'][];
 // Which effect lists each delivery carries in the v1 editor (signature
 // nests like chain, aftershock, and shield bursts wait for a later pass).
 const CAST_LISTS: Record<CastSpec['kind'], readonly { key: string; label: string }[]> = {
-  skillshot: [{ key: 'onHit', label: 'on hit' }],
+  skillshot: [{ key: 'onHit', label: '命中时' }],
   zone: [
     { key: 'onEnter', label: 'on enter' },
     { key: 'onTick', label: 'each tick (enemies)' },
     { key: 'allyOnTick', label: 'each tick (allies)' },
     { key: 'onDetonate', label: 'on detonate' },
   ],
-  cone: [{ key: 'onHit', label: 'on hit' }],
+  cone: [{ key: 'onHit', label: '命中时' }],
   burst: [
     { key: 'effects', label: 'on enemies around' },
-    { key: 'selfEffects', label: 'on self' },
+    { key: 'selfEffects', label: '对自身' },
   ],
   self_or_ally: [{ key: 'effects', label: 'on self or the nearest ally' }],
   enemy_target: [
     { key: 'effects', label: 'on the target' },
-    { key: 'selfEffects', label: 'on self' },
+    { key: 'selfEffects', label: '对自身' },
   ],
   dash: [
     { key: 'onLand', label: 'on landing (radius below)' },
     { key: 'passThrough', label: 'on enemies crossed' },
-    { key: 'selfEffects', label: 'on self' },
+    { key: 'selfEffects', label: '对自身' },
   ],
   wall: [],
 };

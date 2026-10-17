@@ -122,7 +122,7 @@ export function buildPool(onWatch: WatchReplay): HTMLElement {
       title.className = 'lb-sub';
       title.textContent =
         bots.length === 0
-          ? 'No ranked bot yet: mark one Ranked in the Academy.'
+          ? '还没有排位机器人：去学院把一个标为排位。'
           : `The pool: ${bots.length} ranked bot${bots.length > 1 ? 's' : ''}. Open one to read it, and to challenge it with yours.`;
       box.appendChild(title);
       const row = document.createElement('div');

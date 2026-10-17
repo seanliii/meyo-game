@@ -99,12 +99,12 @@ const WAYS: readonly { way: Way; sub: string; empty: string }[] = [
   {
     way: 'arena',
     sub: 'Ranked bots against each other, on the hour and on demand, nobody present.',
-    empty: 'The Arena has not placed anyone yet.',
+    empty: '竞技场还没有人上榜。',
   },
   {
     way: 'forge',
     sub: 'The Forge queue: by hand, with forged champions, on its own rating.',
-    empty: 'Nobody has placed in the Forge queue yet.',
+    empty: '锻造队列还没有人上榜。',
   },
 ];
 
@@ -230,7 +230,7 @@ async function post<T>(path: string, body: unknown): Promise<Outcome<T>> {
     });
     return (await res.json()) as Outcome<T>;
   } catch {
-    return { ok: false, error: 'the server did not answer' };
+    return { ok: false, error: '服务器没有响应' };
   }
 }
 
@@ -259,7 +259,7 @@ function favoriteEl(fav: Favorite | null): HTMLElement {
       img.alt = '';
       box.append(img);
     }
-    box.append(document.createTextNode(fav.forged.name), el('span', 'lp-forged', 'Forged'));
+    box.append(document.createTextNode(fav.forged.name), el('span', 'lp-forged', '锻造'));
     return box;
   }
   if (CHAMPIONS[fav.championId]) {
@@ -278,7 +278,7 @@ function favoriteEl(fav: Favorite | null): HTMLElement {
 function climb(rating: number): { pct: number; text: string } {
   const tier = tierOf(rating);
   const next = nextTier(rating);
-  if (!next) return { pct: 1, text: 'The top tier.' };
+  if (!next) return { pct: 1, text: '最高段位。' };
   const step = TIERS[2]!.min - TIERS[1]!.min;
   const floor = Number.isFinite(tier.min) ? tier.min : next.min - step;
   const pct = Math.max(0, Math.min(1, (rating - floor) / (next.min - floor)));
@@ -307,7 +307,7 @@ export function openLadderPage(
   const back = el('button', 'lp-back', 'Back');
   back.addEventListener('click', close);
   head.append(
-    el('h1', 'lp-title', 'The Ladder'),
+    el('h1', 'lp-title', '天梯'),
     el(
       'span',
       'lp-sub',
@@ -343,7 +343,7 @@ export function openLadderPage(
   const buildCta = async (way: Way): Promise<HTMLElement> => {
     const box = el('div', 'lp-cta');
     if (way === 'hand') {
-      const btn = el('button', 'lp-btn primary', 'Play online');
+      const btn = el('button', 'lp-btn primary', '在线开玩');
       btn.addEventListener('click', () => leaveFor(() => opts.onPlay('queue')));
       box.append(
         btn,
@@ -352,7 +352,7 @@ export function openLadderPage(
       return box;
     }
     if (way === 'forge') {
-      const btn = el('button', 'lp-btn primary', 'Forge queue');
+      const btn = el('button', 'lp-btn primary', '锻造队列');
       btn.addEventListener('click', () => leaveFor(() => opts.onPlay('forge-queue')));
       box.append(
         btn,
@@ -363,12 +363,12 @@ export function openLadderPage(
     const bots = await myBotsOnce();
     if (way === 'bot') {
       if (bots.length === 0) {
-        const btn = el('button', 'lp-btn', 'Open the Academy');
+        const btn = el('button', 'lp-btn', '进入学院');
         btn.addEventListener('click', () => leaveFor(opts.openAcademy));
-        box.append(btn, el('div', 'lp-hint', 'Write a bot first; then queue with it.'));
+        box.append(btn, el('div', 'lp-hint', '先写一个机器人，再用它排队。'));
         return box;
       }
-      const btn = el('button', 'lp-btn primary', 'Play online with your bot');
+      const btn = el('button', 'lp-btn primary', '带你的机器人上线');
       btn.addEventListener('click', () => leaveFor(() => opts.onPlay('queue')));
       box.append(
         btn,
@@ -379,7 +379,7 @@ export function openLadderPage(
     // The Arena: play now with a ranked bot, from the daily allowance.
     const ranked = bots.filter((b) => b.deposited);
     if (ranked.length === 0) {
-      const btn = el('button', 'lp-btn', 'Open the Academy');
+      const btn = el('button', 'lp-btn', '进入学院');
       btn.addEventListener('click', () => leaveFor(opts.openAcademy));
       box.append(
         btn,
@@ -394,12 +394,12 @@ export function openLadderPage(
       o.textContent = `${b.name} (${champName(b.championId)})`;
       sel.append(o);
     }
-    const go = el('button', 'lp-btn primary', 'Play now, ranked');
+    const go = el('button', 'lp-btn primary', '立即排位开打');
     const status = el('div', 'lp-status');
     go.addEventListener('click', () => {
       go.disabled = true;
       status.className = 'lp-status';
-      status.textContent = 'Playing in the Arena...';
+      status.textContent = '正在竞技场对局…';
       void post<{
         winner: 0 | 1 | null;
         ticks: number;
@@ -415,7 +415,7 @@ export function openLadderPage(
         }
         const seat = r.seats.find((s) => s.botId === sel.value);
         status.textContent =
-          (r.winner === 0 ? 'Won' : r.winner === 1 ? 'Lost' : 'No winner') +
+          (r.winner === 0 ? 'Won' : r.winner === 1 ? 'Lost' : '未分胜负') +
           (r.rated && seat
             ? `, ${seat.delta >= 0 ? '+' : ''}${seat.delta} (now ${seat.rating}).`
             : ', unrated.');
@@ -429,12 +429,7 @@ export function openLadderPage(
         void load(current, status);
       });
     });
-    box.append(
-      sel,
-      go,
-      status,
-      el('div', 'lp-hint', 'One rated match now, from the daily allowance.'),
-    );
+    box.append(sel, go, status, el('div', 'lp-hint', '立即来一场计段对局，从每日额度中扣除。'));
     return box;
   };
 
@@ -477,7 +472,7 @@ export function openLadderPage(
         document.createTextNode(`, ${winPct(me.wins, me.losses)}. Form: `),
         formEl(me.form),
       );
-    } else record.textContent = 'No rated match on this way yet.';
+    } else record.textContent = '该方式还没有计段对局。';
     mid.append(record);
     box.append(left, mid, cta);
     return box;
@@ -591,7 +586,7 @@ export function openLadderPage(
         ['#', ''],
         [subject, ''],
         ['Rating', 'num'],
-        ['Rated', 'num'],
+        ['计段', 'num'],
         ['Wins', 'num'],
         ['Form', ''],
         ['Most played', ''],
@@ -640,7 +635,7 @@ export function openLadderPage(
     }
     if (current !== way) return;
     if (!page) {
-      body.textContent = 'Ladder unavailable: the game server is not reachable.';
+      body.textContent = '天梯不可用：连不上游戏服务器。';
       return;
     }
     const cta = await buildCta(way);

@@ -40,8 +40,8 @@ describe('why a champion is playable', () => {
 
 describe('what the card says', () => {
   it('names the price instead of just refusing', () => {
-    expect(standingLine(state, 'sylra')).toBe('Yours');
-    expect(standingLine(state, 'korrath')).toBe('Free this week');
+    expect(standingLine(state, 'sylra')).toBe('你的');
+    expect(standingLine(state, 'korrath')).toBe('本周免费');
     expect(standingLine(state, 'vesk')).toBe('800');
   });
 

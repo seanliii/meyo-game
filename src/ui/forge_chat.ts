@@ -171,7 +171,7 @@ export function chatPanel<T>(state: ChatState, opts: ChatPanelOpts<T>): HTMLElem
   panel.append(el('p', 'fe-lead', opts.lead));
   const log = el('div', 'fe-chatlog');
   if (state.turns.length === 0 && !state.inflight) {
-    log.append(el('div', 'fe-step-text', 'No messages yet.'));
+    log.append(el('div', 'fe-step-text', '还没有消息。'));
   }
   for (const turn of state.turns) {
     log.append(el('div', `fe-bubble ${turn.role === 'user' ? 'user' : 'ai'}`, turn.bubble));
@@ -258,7 +258,7 @@ export function chatPanel<T>(state: ChatState, opts: ChatPanelOpts<T>): HTMLElem
   });
   row.append(input, send);
   if (state.turns.length > 0 && !state.inflight) {
-    const clear = el('button', 'fe-mini', 'Start over') as HTMLButtonElement;
+    const clear = el('button', 'fe-mini', '重新开始') as HTMLButtonElement;
     clear.title = 'Forget this conversation (the proposal below stays)';
     clear.addEventListener('click', () => {
       state.turns.length = 0;

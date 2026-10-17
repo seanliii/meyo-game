@@ -18,7 +18,7 @@ export function showReloadNotice(
 ): void {
   const { card } = screen(container);
   card.append(
-    el('h1', 'menu-title', 'New version'),
+    el('h1', 'menu-title', '新版本可用'),
     el('p', 'menu-sub', 'The game was just updated. Reloading in a moment.'),
   );
   window.setTimeout(reload, waitMs);

@@ -32,14 +32,14 @@ export interface ItemDef {
 }
 
 const T1: readonly ItemDef[] = [
-  { id: 'iron_blade', name: 'Iron Blade', cost: 350, tier: 1, stats: { ad: 10 } },
-  { id: 'spark_rod', name: 'Spark Rod', cost: 435, tier: 1, stats: { ap: 20 } },
-  { id: 'guard_plate', name: 'Guard Plate', cost: 300, tier: 1, stats: { armor: 15 } },
-  { id: 'null_cloak', name: 'Null Cloak', cost: 450, tier: 1, stats: { mr: 15 } },
-  { id: 'heart_gem', name: 'Heart Gem', cost: 400, tier: 1, stats: { hp: 150 } },
-  { id: 'mind_gem', name: 'Mind Gem', cost: 350, tier: 1, stats: { mana: 200 } },
-  { id: 'swift_fang', name: 'Swift Fang', cost: 300, tier: 1, stats: { attackSpeedPct: 0.12 } },
-  { id: 'traveler_soles', name: 'Traveler Soles', cost: 300, tier: 1, stats: { moveSpeed: 0.25 } },
+  { id: 'iron_blade', name: '铁刃', cost: 350, tier: 1, stats: { ad: 10 } },
+  { id: 'spark_rod', name: '电光杖', cost: 435, tier: 1, stats: { ap: 20 } },
+  { id: 'guard_plate', name: '护卫板甲', cost: 300, tier: 1, stats: { armor: 15 } },
+  { id: 'null_cloak', name: '虚空斗篷', cost: 450, tier: 1, stats: { mr: 15 } },
+  { id: 'heart_gem', name: '生命宝石', cost: 400, tier: 1, stats: { hp: 150 } },
+  { id: 'mind_gem', name: '法力宝石', cost: 350, tier: 1, stats: { mana: 200 } },
+  { id: 'swift_fang', name: '迅捷之牙', cost: 300, tier: 1, stats: { attackSpeedPct: 0.12 } },
+  { id: 'traveler_soles', name: '旅者草鞋', cost: 300, tier: 1, stats: { moveSpeed: 0.25 } },
 ];
 
 // Offensive tier 2 stats run HOT on purpose (snowball review): a gold lead
@@ -49,7 +49,7 @@ const T1: readonly ItemDef[] = [
 const T2: readonly ItemDef[] = [
   {
     id: 'warbrand',
-    name: 'Warbrand',
+    name: '战痕巨刃',
     cost: 1300,
     tier: 2,
     stats: { ad: 56 },
@@ -57,7 +57,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'storm_staff',
-    name: 'Storm Staff',
+    name: '风暴法杖',
     cost: 1600,
     tier: 2,
     stats: { ap: 105 },
@@ -65,7 +65,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'sunder_axe',
-    name: 'Sunder Axe',
+    name: '破甲斧',
     cost: 1350,
     tier: 2,
     stats: { ad: 30, armorPenPct: 0.35 },
@@ -73,7 +73,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'void_crystal',
-    name: 'Void Crystal',
+    name: '虚空水晶',
     cost: 1450,
     tier: 2,
     stats: { ap: 50, mrPenPct: 0.35 },
@@ -81,7 +81,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'stone_bulwark',
-    name: 'Stone Bulwark',
+    name: '磐石壁垒',
     cost: 1300,
     tier: 2,
     stats: { armor: 20, hp: 180 },
@@ -89,7 +89,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'spirit_ward',
-    name: 'Spirit Ward',
+    name: '灵魂守卫',
     cost: 1400,
     tier: 2,
     stats: { mr: 20, hp: 180 },
@@ -97,7 +97,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'colossus_heart',
-    name: 'Colossus Heart',
+    name: '巨像之心',
     cost: 1400,
     tier: 2,
     stats: { hp: 350 },
@@ -105,7 +105,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'archmind',
-    name: 'Archmind',
+    name: '至高心智',
     cost: 1300,
     tier: 2,
     stats: { ap: 60, mana: 300 },
@@ -113,7 +113,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'windrazor',
-    name: 'Windrazor',
+    name: '风之剃刀',
     cost: 1150,
     tier: 2,
     stats: { ad: 35, attackSpeedPct: 0.35 },
@@ -121,7 +121,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'titan_cleaver',
-    name: 'Titan Cleaver',
+    name: '泰坦劈刀',
     cost: 1250,
     tier: 2,
     stats: { ad: 35, hp: 200 },
@@ -129,7 +129,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'runeblade',
-    name: 'Runeblade',
+    name: '符文之刃',
     cost: 1300,
     tier: 2,
     stats: { ad: 28, ap: 42 },
@@ -137,7 +137,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'swiftplate',
-    name: 'Swiftplate',
+    name: '迅捷板甲',
     cost: 1050,
     tier: 2,
     stats: { armor: 25, attackSpeedPct: 0.2 },
@@ -145,7 +145,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'clarity_stone',
-    name: 'Clarity Stone',
+    name: '清明石',
     cost: 1250,
     tier: 2,
     stats: { mr: 20, mana: 250 },
@@ -153,7 +153,7 @@ const T2: readonly ItemDef[] = [
   },
   {
     id: 'swift_treads',
-    name: 'Swift Treads',
+    name: '疾行胫甲',
     cost: 900,
     tier: 2,
     stats: { moveSpeed: 0.55 },
@@ -167,7 +167,7 @@ const T2: readonly ItemDef[] = [
 const T3: readonly ItemDef[] = [
   {
     id: 'doombrand',
-    name: 'Doombrand',
+    name: '末日烙印',
     cost: 2900,
     tier: 3,
     stats: { ad: 95 },
@@ -175,7 +175,7 @@ const T3: readonly ItemDef[] = [
   },
   {
     id: 'tempest_core',
-    name: 'Tempest Core',
+    name: '风暴核心',
     cost: 3200,
     tier: 3,
     stats: { ap: 175 },
@@ -183,7 +183,7 @@ const T3: readonly ItemDef[] = [
   },
   {
     id: 'rendfang',
-    name: 'Rendfang',
+    name: '撕裂之牙',
     cost: 2900,
     tier: 3,
     stats: { ad: 55, armorPenPct: 0.45 },
@@ -191,7 +191,7 @@ const T3: readonly ItemDef[] = [
   },
   {
     id: 'null_engine',
-    name: 'Null Engine',
+    name: '虚空引擎',
     cost: 3000,
     tier: 3,
     stats: { ap: 90, mrPenPct: 0.45 },
@@ -199,7 +199,7 @@ const T3: readonly ItemDef[] = [
   },
   {
     id: 'skyshear',
-    name: 'Skyshear',
+    name: '裂空者',
     cost: 2800,
     tier: 3,
     stats: { ad: 60, attackSpeedPct: 0.55, moveSpeed: 0.35 },
@@ -207,7 +207,7 @@ const T3: readonly ItemDef[] = [
   },
   {
     id: 'worldheart',
-    name: 'Worldheart',
+    name: '世界之心',
     cost: 3000,
     tier: 3,
     stats: { hp: 650, armor: 25, mr: 25 },

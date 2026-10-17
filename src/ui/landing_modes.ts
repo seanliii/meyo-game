@@ -34,36 +34,36 @@ export interface LandingMode {
 // cards on the landing are an offer and an offer, rather than an offer and
 // a footnote under it.
 export const PRACTICE_ART = tileArtUrl('practice');
-// Its button. It used to say "Play offline", which reads as a lesser game
+// Its button. It used to say "离线练习", which reads as a lesser game
 // to someone who came to play; what it offers is a match right here, with
 // nothing to install and no account: the public queue as a Guest (ADR
 // 0024), people when they are on and bots in every empty seat.
-export const PLAY_NOW_CALL = 'Play in the browser now';
+export const PLAY_NOW_CALL = '立即在浏览器开玩';
 export const PLAY_NOW_LINE =
   'A real 5v5 online: players when they are on, bots in every empty seat.';
-export const PLAY_NOW_FINE = 'No account, nothing to install. Unranked.';
+export const PLAY_NOW_FINE = '无需账号、无需安装。不计段位。';
 // The offline match stays, one quiet line under the button: it is what
 // works when the server does not.
-export const PRACTICE_ALONE_CALL = 'Or practice alone against bots, offline';
+export const PRACTICE_ALONE_CALL = '或离线单人对练机器人';
 
 export const LANDING_MODES: readonly LandingMode[] = [
   {
     id: 'ranked',
-    call: 'Play in ranked',
-    title: 'Ranked',
+    call: '打排位',
+    title: '排位',
     line: 'The public queue, with a rating, a match history and a place on the ladder.',
     art: tileArtUrl('ranked'),
   },
   {
     id: 'bots',
-    call: 'Create your bot',
-    title: 'Bots',
+    call: '创建你的机器人',
+    title: '机器人',
     line: "Write a bot's playbook in the Academy, spar it in seconds, then send it up the ladder.",
     art: tileArtUrl('bots'),
   },
   {
     id: 'forge',
-    call: 'Forge your champion',
+    call: '锻造你的英雄',
     title: 'Forge',
     line: 'Build a champion from scratch, kit and all, then take it into the Forge queue.',
     art: tileArtUrl('forge'),

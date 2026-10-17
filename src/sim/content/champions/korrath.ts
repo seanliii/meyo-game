@@ -12,11 +12,11 @@ const SHIELDSKIN_PER_LEVEL = 7;
 
 export const KORRATH: ChampionDef = {
   id: 'korrath',
-  name: 'Korrath, the Bulwark',
+  name: '科拉思, 壁垒',
   role: 'Tank',
   blurb: 'An immovable frontline anchor who soaks damage and locks enemies down.',
   passive: {
-    name: 'Shieldskin',
+    name: '盾皮',
     description: 'After 4 seconds without taking damage, gains a small shield.',
     onTick(ctx, self) {
       if (ctx.time - self.lastDamagedAt < SHIELDSKIN_CALM_S) return;
@@ -45,7 +45,7 @@ export const KORRATH: ChampionDef = {
   growth: { hp: 95, mana: 35, ad: 3.5, armor: 3.2, mr: 2 },
   abilities: {
     Q: {
-      name: 'Shield Slam',
+      name: '盾击',
       manaCost: 35,
       cooldown: 4.5,
       castRange: 5,
@@ -69,7 +69,7 @@ export const KORRATH: ChampionDef = {
     W: {
       // The name finally means it: a stone rampart across the aim, real
       // terrain that blocks walking and dashes for a beat.
-      name: 'Iron Wall',
+      name: '铁壁',
       manaCost: 45,
       cooldown: 11,
       // Placed as far as the grip reaches (8), because wall-then-grip is
@@ -82,7 +82,7 @@ export const KORRATH: ChampionDef = {
       // A maul slam that sends a fissure of grasping stone along the ground.
       // A target dragged into contact with terrain (map rock or his own
       // rampart) is stunned: the wall and the grip are one kit.
-      name: 'Earthgrip',
+      name: '大地之握',
       manaCost: 50,
       cooldown: 9,
       castRange: 8,
@@ -105,7 +105,7 @@ export const KORRATH: ChampionDef = {
       },
     },
     R: {
-      name: 'Earthbreak',
+      name: '裂地',
       manaCost: 85,
       cooldown: 67.5,
       castRange: 7,

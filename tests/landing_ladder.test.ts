@@ -13,9 +13,9 @@ const some = (way: LandingLadder['way'], total: number): LandingLadder => ({
 
 describe('the ladder on the landing', () => {
   it('names the two columns', () => {
-    expect(columnTitle('hand')).toBe('By hand');
-    expect(columnTitle('arena')).toBe('Bots');
-    expect(columnTitle('bot')).toBe('Bots');
+    expect(columnTitle('hand')).toBe('手动操盘');
+    expect(columnTitle('arena')).toBe('机器人');
+    expect(columnTitle('bot')).toBe('机器人');
   });
 
   it('writes a record as wins and losses', () => {
@@ -36,7 +36,7 @@ describe('the ladder on the landing', () => {
       '10 names placed, 40 accounts. Yours goes here with a free account.',
     );
     expect(ladderLead({ ladder: some('hand', 1), bots: empty('arena'), accounts: 2 })).toBe(
-      '1 name placed, 2 accounts. Yours goes here with a free account.',
+      '已有 1 人上榜, 2 accounts. Yours goes here with a free account.',
     );
   });
 });

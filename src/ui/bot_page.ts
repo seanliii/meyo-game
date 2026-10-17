@@ -93,7 +93,7 @@ async function post<T>(path: string, body: unknown): Promise<Outcome<T>> {
     });
     return (await res.json()) as Outcome<T>;
   } catch {
-    return { ok: false, error: 'the server did not answer' };
+    return { ok: false, error: '服务器没有响应' };
   }
 }
 
@@ -197,7 +197,7 @@ export function openBotPage(
     );
     box.append(head);
     const line = el('div', 'bp-line');
-    line.append(ratingLine('Live', r.ratings.live), ratingLine('Arena', r.ratings.arena));
+    line.append(ratingLine('Live', r.ratings.live), ratingLine('竞技场', r.ratings.arena));
     box.append(line);
     // The Record per kind (src/ui/tally_view.ts): the rated play a reader
     // came for, and the sparring behind it kept where it belongs.
@@ -213,7 +213,7 @@ export function openBotPage(
         o.textContent = `${mine.name} (${CHAMPIONS[mine.championId]?.name.split(',')[0] ?? mine.championId})`;
         sel.append(o);
       }
-      const go = el('button', 'bp-btn primary', 'Challenge') as HTMLButtonElement;
+      const go = el('button', 'bp-btn primary', '挑战') as HTMLButtonElement;
       go.title =
         'Your bot against this one, now, on the server, unrated (from the daily allowance)';
       const status = el('div', 'bp-status');
@@ -233,7 +233,7 @@ export function openBotPage(
             return;
           }
           status.textContent =
-            (c.winner === 0 ? 'Your bot won' : c.winner === 1 ? 'Your bot lost' : 'No winner') +
+            (c.winner === 0 ? 'Your bot won' : c.winner === 1 ? 'Your bot lost' : '未分胜负') +
             ` after ${fmtClock(c.ticks)}, unrated.`;
           if (c.replayId !== undefined && opts.onWatch) {
             const id = c.replayId;
@@ -247,7 +247,7 @@ export function openBotPage(
         });
       });
       row.append(sel, go);
-      box.append(el('h4', '', 'Challenge'), row, status);
+      box.append(el('h4', '', '挑战'), row, status);
     }
 
     box.append(el('h4', '', 'Rated matches'));

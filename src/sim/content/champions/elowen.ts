@@ -11,11 +11,11 @@ const MISTBORNE_DURATION_S = 1.2;
 
 export const ELOWEN: ChampionDef = {
   id: 'elowen',
-  name: 'Elowen, Mistward',
+  name: '艾洛文, 守雾者',
   role: 'Battlemage',
   blurb: 'A skirmishing mage who bends vision itself and flows between hits.',
   passive: {
-    name: 'Mistborne',
+    name: '雾生',
     description: 'Dealing ability damage grants a brief burst of move speed.',
     modifyDamage(ctx, self, _target, amount, _dtype, via) {
       if (via === 'ability' && amount > 0) {
@@ -41,7 +41,7 @@ export const ELOWEN: ChampionDef = {
   growth: { hp: 90, mana: 45, ad: 3, armor: 2.3, mr: 1.3 },
   abilities: {
     Q: {
-      name: 'Mist Lance',
+      name: '迷雾长枪',
       manaCost: 40,
       cooldown: 4.5,
       castRange: 9.5,
@@ -69,7 +69,7 @@ export const ELOWEN: ChampionDef = {
       },
     },
     W: {
-      name: 'Veil',
+      name: '帷幕',
       manaCost: 60,
       cooldown: 10.5,
       // Cast from where a battlemage stands, which is a step behind her
@@ -98,7 +98,7 @@ export const ELOWEN: ChampionDef = {
       },
     },
     E: {
-      name: 'Drifting Step',
+      name: '浮步',
       manaCost: 45,
       cooldown: 8.5,
       // Four was the shortest step on the roster, shorter than the veil
@@ -109,7 +109,7 @@ export const ELOWEN: ChampionDef = {
       spec: { kind: 'dash', range: 5 },
     },
     R: {
-      name: 'Whiteout',
+      name: '白茫',
       manaCost: 85,
       cooldown: 64,
       castRange: 9,

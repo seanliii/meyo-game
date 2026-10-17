@@ -1518,7 +1518,7 @@ export class Hud {
     this.kdaText = el('div', '', '0 / 0 / 0');
     this.kdaCs = el('span', 'cs', 'CS 0');
     kda.append(this.kdaText, this.kdaCs);
-    attachTooltip(kda, () => ['Kills / Deaths / Assists', 'CS: minions last-hit.']);
+    attachTooltip(kda, () => ['击杀 / 死亡 / 助攻', 'CS：补刀的小兵数。']);
 
     // The attacked target's frame: portrait, name, and health at
     // the top of the screen while an attack order stands.
@@ -1543,7 +1543,7 @@ export class Hud {
     this.chatLog = el('div', '');
     this.chatInput = el('input', 'hud-chat-input') as HTMLInputElement;
     this.chatInput.maxLength = 200;
-    this.chatInput.placeholder = 'Press Enter to send, Esc to cancel';
+    this.chatInput.placeholder = '回车发送，Esc 取消';
     this.chatInput.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') {
@@ -1582,7 +1582,7 @@ export class Hud {
     });
 
     this.score = el('div', 'hud-score');
-    this.score.append(el('h3', '', 'Scoreboard (Tab)'));
+    this.score.append(el('h3', '', '记分板（Tab）'));
     const teamsWrap = el('div', 'hud-score-teams');
     const mkTeam = (cls: string, label: string): HTMLElement => {
       const box = el('div', `hud-score-team ${cls}`);
@@ -1592,12 +1592,12 @@ export class Hud {
       teamsWrap.appendChild(box);
       return rows;
     };
-    this.scoreTeams = [mkTeam('blue', 'Team 1'), mkTeam('red', 'Team 2')];
+    this.scoreTeams = [mkTeam('blue', '蓝方'), mkTeam('red', '红方')];
     this.score.appendChild(teamsWrap);
 
     this.deathOverlay = el('div', 'hud-overlay');
     this.deathSub = el('div', 'hud-overlay-sub');
-    this.deathOverlay.append(el('div', 'hud-overlay-title', 'SLAIN'), this.deathSub);
+    this.deathOverlay.append(el('div', 'hud-overlay-title', '阵亡'), this.deathSub);
 
     // The end screen: VICTORY/DEFEAT, the match table, Play again and
     // Return to menu are painted by the game. The one element it keeps is
@@ -1608,17 +1608,17 @@ export class Hud {
     this.endFeedbackHost.append(this.endFeedback.root);
 
     this.escapeOverlay = el('div', 'hud-overlay modal');
-    const resume = el('button', 'hud-menu-btn', 'Resume (Esc)');
+    const resume = el('button', 'hud-menu-btn', '继续游戏（Esc）');
     resume.addEventListener('click', () => this.toggleEscapeMenu());
-    const fullscreenBtn = el('button', 'hud-menu-btn', 'Toggle fullscreen');
+    const fullscreenBtn = el('button', 'hud-menu-btn', '切换全屏');
     fullscreenBtn.addEventListener('click', () => toggleGameFullscreen());
-    const quit = el('button', 'hud-menu-btn', 'Leave match');
+    const quit = el('button', 'hud-menu-btn', '离开对局');
     quit.addEventListener('click', () => onExit('menu'));
     // And in the pause menu, which is the other door out: whoever is
     // about to press Leave match is the one with something to say.
     this.pauseFeedback = this.buildFeedback('pause');
     this.escapeOverlay.append(
-      el('div', 'hud-overlay-title', 'Paused view'),
+      el('div', 'hud-overlay-title', '暂停'),
       resume,
       buildSettingsPanel(),
       fullscreenBtn,
@@ -1627,7 +1627,7 @@ export class Hud {
     );
 
     root.append(
-      el('div', 'hud-turn', 'Turn your phone sideways to play'),
+      el('div', 'hud-turn', '请横屏游玩'),
       hints,
       kda,
       this.teamScore.el,
@@ -1713,7 +1713,7 @@ export class Hud {
     if (!unit || itemId === undefined) return;
     if (!this.canShop()) {
       playSfx('deny');
-      this.toast('You can only sell at your fountain.');
+      this.toast('只能在家里的泉水卖出装备。');
       return;
     }
     const def = ITEMS[itemId];
@@ -1754,10 +1754,7 @@ export class Hud {
         const itemId = live?.items[hit.slot];
         const item = itemId ? ITEMS[itemId] : undefined;
         return item
-          ? [
-              ...describeItem(item, statLabel(item.stats)),
-              'Right-click to sell (70 percent back, at fountain).',
-            ]
+          ? [...describeItem(item, statLabel(item.stats)), '右键卖出（在泉水返还 70% 金币）。']
           : [];
       };
     }
@@ -1992,7 +1989,7 @@ export class Hud {
       this.surface.markDirty();
       return;
     }
-    const label = way === 'bot' ? 'bot rating' : queue === 'forge' ? 'Forge rating' : 'rating';
+    const label = way === 'bot' ? '机器人段位' : queue === 'forge' ? '锻造段位' : 'rating';
     this.endRatingText = `${delta >= 0 ? '+' : ''}${delta} ${label} (now ${rating})`;
     this.endRatingColor = delta >= 0 ? '#8fd06a' : '#d06a6a';
     this.surface.markDirty();
@@ -2264,7 +2261,7 @@ export class Hud {
             playSfx('levelup');
             announceVoice('wrath_ours', true);
           } else if (enemyWrath > this.lastWrathEnemyUntil) {
-            this.announce('The enemy holds the Wrath', '#f5a3a3');
+            this.announce('敌方持有天怒', '#f5a3a3');
             playSfx('deny');
             announceVoice('wrath_theirs', true);
           }
@@ -2403,13 +2400,13 @@ export class Hud {
         })),
       }));
     shop.sections = [
-      { title: 'Components', items: cards(ITEM_LIST.filter((i) => i.tier === 1)) },
+      { title: '基础件', items: cards(ITEM_LIST.filter((i) => i.tier === 1)) },
       {
-        title: 'Finished items, built from two components',
+        title: '成型装：由两件基础件合成',
         items: cards(ITEM_LIST.filter((i) => i.tier === 2)),
       },
       {
-        title: 'Legendary upgrades, built from a finished item',
+        title: '传说装：由成型装升级',
         items: cards(ITEM_LIST.filter((i) => i.tier === 3)),
       },
     ];
@@ -2435,7 +2432,7 @@ export class Hud {
     const described = describeItem(def, statLabel(def.stats));
     shop.detail = {
       name: def.name,
-      tier: def.tier === 1 ? 'Component' : def.tier === 2 ? 'Finished item' : 'Legendary upgrade',
+      tier: def.tier === 1 ? '基础件' : def.tier === 2 ? '成型装' : 'Legendary upgrade',
       icon: itemIconUrl(def),
       stats: statLabel(def.stats),
       blurb: described.slice(2).join(' ') || null,
@@ -2488,7 +2485,7 @@ export class Hud {
       if (!victimRow) continue;
       if (!this.sawFirstBlood) {
         this.sawFirstBlood = true;
-        this.announce('First blood');
+        this.announce('第一滴血');
         announceVoice('first_blood', true);
       }
       // Every champion death feeds the ladder, not only your own kills:
@@ -2609,7 +2606,7 @@ export class Hud {
         this.toast(
           this.coarsePointer
             ? 'You spawned with 500g. Tap Shop to buy.'
-            : 'You spawned with 500g. Press P to shop.',
+            : '出门 500 金币，按 P 打开商店。',
         );
       }
       // The feedback line likewise: the start of a match only.
@@ -2633,13 +2630,13 @@ export class Hud {
         this.announceEl.style.opacity = '1';
       } else {
         this.sawBattleBegin = true;
-        this.announce('Battle begins');
+        this.announce('战斗打响');
         announceVoice('minions_spawned');
       }
     }
     const towerCount = [...this.world.units.values()].filter((x) => x.kind === 'tower').length;
     if (this.lastTowerCount !== null && towerCount < this.lastTowerCount) {
-      this.announce('A tower has fallen');
+      this.announce('一座防御塔被摧毁');
       playSfx('tower');
       announceVoice('tower_fallen');
     }
@@ -3034,7 +3031,7 @@ export class Hud {
         });
       }
       this.endInfo = {
-        title: winner === this.selfTeam ? 'Victory' : 'Defeat',
+        title: winner === this.selfTeam ? '胜利' : '失败',
         won: winner === this.selfTeam,
         sub: `Match time ${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`,
         teams,
