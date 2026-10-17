@@ -24,7 +24,7 @@ describe('the ladder on the landing', () => {
 
   it('speaks to a fresh server rather than counting to zero', () => {
     expect(ladderLead({ ladder: empty('hand'), bots: empty('arena'), accounts: 0 })).toBe(
-      'Nobody has placed yet. The first name here could be yours.',
+      '还没有人上榜。第一个名字可能就是你。',
     );
     expect(ladderLead({ ladder: empty('hand'), bots: empty('arena'), accounts: 4 })).toBe(
       '4 accounts, none placed yet. The first name here could be yours.',
