@@ -3857,7 +3857,7 @@ var ASCENDANT_BODY = {
 var CREATURES = {
   pyrefang: {
     id: "pyrefang",
-    name: "Pyrefang",
+    name: "\u71CE\u7259",
     ring: "bot",
     firstRiseS: 240,
     returnS: 180,
@@ -3867,7 +3867,7 @@ var CREATURES = {
   },
   voidmaul: {
     id: "voidmaul",
-    name: "Voidmaul",
+    name: "\u865A\u9524",
     ring: "top",
     firstRiseS: 390,
     returnS: 180,
@@ -4342,11 +4342,11 @@ var TWINSHOT_EVERY = 3;
 var TWINSHOT_RATIO = 0.5;
 var ASHVYN = {
   id: "ashvyn",
-  name: "Ashvyn, Nightbow",
+  name: "\u827E\u4EC0\u6587, \u591C\u5F13",
   role: "Marksman",
   blurb: "A mobile duelist marksman who weaves in and out of range.",
   passive: {
-    name: "Twinshot",
+    name: "\u53CC\u53D1",
     description: "Every third attack strikes twice (the echo deals 50 percent damage). Casting Hunter's Step readies the echo instantly.",
     onAttackHit(ctx, self, target) {
       self.passiveStacks += 1;
@@ -4376,7 +4376,7 @@ var ASHVYN = {
   growth: { hp: 90, mana: 30, ad: 5.5, armor: 2.2, mr: 1.3 },
   abilities: {
     Q: {
-      name: "Shadow Volley",
+      name: "\u6697\u5F71\u9F50\u5C04",
       manaCost: 40,
       cooldown: 5.5,
       castRange: 7,
@@ -4410,7 +4410,7 @@ var ASHVYN = {
       }
     },
     E: {
-      name: "Pinning Arrow",
+      name: "\u9489\u8DB3\u7BAD",
       manaCost: 45,
       cooldown: 8.5,
       castRange: 10,
@@ -4464,11 +4464,11 @@ var HEAT_BONUS = 1.25;
 var JAB_KILL_WINDOW_S = 0.6;
 var DAIN = {
   id: "dain",
-  name: "Dain, Emberfist",
+  name: "\u6234\u6069, \u70BD\u62F3",
   role: "Fighter",
   blurb: "A brawler who wants long trades: attacks build Heat for empowered abilities.",
   passive: {
-    name: "Heat",
+    name: "\u70BD\u70ED",
     description: "Attacks build Heat (up to 4); Ember Flurry adds one. At full Heat, the next ability deals 25 percent bonus damage. A kill moments after his strike resets Blazing Jab.",
     onAttackHit(_ctx, self) {
       self.passiveStacks = Math.min(HEAT_MAX, self.passiveStacks + 1);
@@ -4503,7 +4503,7 @@ var DAIN = {
   growth: { hp: 100, mana: 30, ad: 3.8, armor: 2.6, mr: 1.8 },
   abilities: {
     Q: {
-      name: "Blazing Jab",
+      name: "\u70BD\u7130\u7A81\u523A",
       manaCost: 30,
       cooldown: 4,
       castRange: 7,
@@ -4535,7 +4535,7 @@ var DAIN = {
       }
     },
     W: {
-      name: "Cinder Guard",
+      name: "\u4F59\u70EC\u5B88\u536B",
       manaCost: 45,
       cooldown: 9,
       castRange: 6.5,
@@ -4574,7 +4574,7 @@ var DAIN = {
       }
     },
     E: {
-      name: "Ember Flurry",
+      name: "\u4F59\u70EC\u65CB\u821E",
       manaCost: 30,
       cooldown: 7,
       castRange: 0,
@@ -4595,7 +4595,7 @@ var DAIN = {
       }
     },
     R: {
-      name: "Emberfall",
+      name: "\u70EC\u843D",
       manaCost: 75,
       cooldown: 60,
       castRange: 6,
@@ -4632,11 +4632,11 @@ var MISTBORNE_MS_PCT = 0.08;
 var MISTBORNE_DURATION_S = 1.2;
 var ELOWEN = {
   id: "elowen",
-  name: "Elowen, Mistward",
+  name: "\u827E\u6D1B\u6587, \u5B88\u96FE\u8005",
   role: "Battlemage",
   blurb: "A skirmishing mage who bends vision itself and flows between hits.",
   passive: {
-    name: "Mistborne",
+    name: "\u96FE\u751F",
     description: "Dealing ability damage grants a brief burst of move speed.",
     modifyDamage(ctx, self, _target, amount, _dtype, via) {
       if (via === "ability" && amount > 0) {
@@ -4662,7 +4662,7 @@ var ELOWEN = {
   growth: { hp: 90, mana: 45, ad: 3, armor: 2.3, mr: 1.3 },
   abilities: {
     Q: {
-      name: "Mist Lance",
+      name: "\u8FF7\u96FE\u957F\u67AA",
       manaCost: 40,
       cooldown: 4.5,
       castRange: 9.5,
@@ -4690,7 +4690,7 @@ var ELOWEN = {
       }
     },
     W: {
-      name: "Veil",
+      name: "\u5E37\u5E55",
       manaCost: 60,
       cooldown: 10.5,
       // Cast from where a battlemage stands, which is a step behind her
@@ -4719,7 +4719,7 @@ var ELOWEN = {
       }
     },
     E: {
-      name: "Drifting Step",
+      name: "\u6D6E\u6B65",
       manaCost: 45,
       cooldown: 8.5,
       // Four was the shortest step on the roster, shorter than the veil
@@ -4730,7 +4730,7 @@ var ELOWEN = {
       spec: { kind: "dash", range: 5 }
     },
     R: {
-      name: "Whiteout",
+      name: "\u767D\u832B",
       manaCost: 85,
       cooldown: 64,
       castRange: 9,
@@ -4763,11 +4763,11 @@ var OPPORTUNIST_BONUS = 1.15;
 var LUNGE_RESET_WINDOW_S = 2;
 var FENN = {
   id: "fenn",
-  name: "Fenn, the Quickblade",
+  name: "\u82AC\u6069, \u8FC5\u5203",
   role: "Assassin",
   blurb: "A single-target executioner who commits hard and finishes low targets.",
   passive: {
-    name: "Opportunist",
+    name: "\u4F3A\u673A\u800C\u52A8",
     description: "Deals 15 percent bonus damage to enemies below 35 percent health. Takedowns on recently struck champions reset Lunge.",
     modifyDamage(_ctx, _self, target, amount) {
       if (target.maxHp <= 0 || target.hp / target.maxHp >= OPPORTUNIST_THRESHOLD) return amount;
@@ -4795,7 +4795,7 @@ var FENN = {
   growth: { hp: 92, mana: 35, ad: 5.5, armor: 2.2, mr: 1.6 },
   abilities: {
     Q: {
-      name: "Lunge",
+      name: "\u7A81\u523A",
       manaCost: 35,
       cooldown: 5.5,
       // Seven, level with the fighter's punch (Blazing Jab): the
@@ -4814,7 +4814,7 @@ var FENN = {
       }
     },
     W: {
-      name: "Twin Fangs",
+      name: "\u53CC\u7259",
       manaCost: 40,
       cooldown: 6,
       castRange: 8,
@@ -4837,7 +4837,7 @@ var FENN = {
       }
     },
     E: {
-      name: "Smoke Veil",
+      name: "\u70DF\u5E55",
       manaCost: 45,
       cooldown: 10.5,
       castRange: 0,
@@ -4851,7 +4851,7 @@ var FENN = {
       }
     },
     R: {
-      name: "Shadow Flurry",
+      name: "\u6697\u5F71\u8FDE\u51FB",
       manaCost: 85,
       cooldown: 56.5,
       // The blur has to cross a screen's worth of teamfight to reach the
@@ -4886,11 +4886,11 @@ var SHIELDSKIN_BASE = 25;
 var SHIELDSKIN_PER_LEVEL = 7;
 var KORRATH = {
   id: "korrath",
-  name: "Korrath, the Bulwark",
+  name: "\u79D1\u62C9\u601D, \u58C1\u5792",
   role: "Tank",
   blurb: "An immovable frontline anchor who soaks damage and locks enemies down.",
   passive: {
-    name: "Shieldskin",
+    name: "\u76FE\u76AE",
     description: "After 4 seconds without taking damage, gains a small shield.",
     onTick(ctx, self) {
       if (ctx.time - self.lastDamagedAt < SHIELDSKIN_CALM_S) return;
@@ -4919,7 +4919,7 @@ var KORRATH = {
   growth: { hp: 95, mana: 35, ad: 3.5, armor: 3.2, mr: 2 },
   abilities: {
     Q: {
-      name: "Shield Slam",
+      name: "\u76FE\u51FB",
       manaCost: 35,
       cooldown: 4.5,
       castRange: 5,
@@ -4943,7 +4943,7 @@ var KORRATH = {
     W: {
       // The name finally means it: a stone rampart across the aim, real
       // terrain that blocks walking and dashes for a beat.
-      name: "Iron Wall",
+      name: "\u94C1\u58C1",
       manaCost: 45,
       cooldown: 11,
       // Placed as far as the grip reaches (8), because wall-then-grip is
@@ -4956,7 +4956,7 @@ var KORRATH = {
       // A maul slam that sends a fissure of grasping stone along the ground.
       // A target dragged into contact with terrain (map rock or his own
       // rampart) is stunned: the wall and the grip are one kit.
-      name: "Earthgrip",
+      name: "\u5927\u5730\u4E4B\u63E1",
       manaCost: 50,
       cooldown: 9,
       castRange: 8,
@@ -4979,7 +4979,7 @@ var KORRATH = {
       }
     },
     R: {
-      name: "Earthbreak",
+      name: "\u88C2\u5730",
       manaCost: 85,
       cooldown: 67.5,
       castRange: 7,
@@ -5017,11 +5017,11 @@ var SPRING_TIDE_RATIO = 0.35;
 var SPRING_TIDE_RANGE = 6;
 var MAERA = {
   id: "maera",
-  name: "Maera, Tidecaller",
+  name: "\u6885\u62C9, \u5524\u6F6E\u8005",
   role: "Support",
   blurb: "Sustain and wave-shaped utility: keeps the team standing.",
   passive: {
-    name: "Spring Tide",
+    name: "\u6625\u6F6E",
     description: "Her heals splash 35 percent of the amount onto the nearest other ally.",
     onHealGiven(ctx, self, target, amount) {
       let best = null;
@@ -5057,7 +5057,7 @@ var MAERA = {
   growth: { hp: 85, mana: 50, ad: 2.5, armor: 2.3, mr: 1.5 },
   abilities: {
     Q: {
-      name: "Tide Surge",
+      name: "\u6F6E\u6D8C",
       manaCost: 50,
       cooldown: 7,
       castRange: 9,
@@ -5072,7 +5072,7 @@ var MAERA = {
       }
     },
     W: {
-      name: "Rising Spring",
+      name: "\u5347\u817E\u4E4B\u6CC9",
       manaCost: 60,
       cooldown: 10,
       castRange: 8,
@@ -5093,7 +5093,7 @@ var MAERA = {
       }
     },
     E: {
-      name: "Undertow",
+      name: "\u6697\u6D41",
       manaCost: 45,
       cooldown: 7,
       castRange: 8,
@@ -5110,7 +5110,7 @@ var MAERA = {
       }
     },
     R: {
-      name: "Great Wave",
+      name: "\u5DE8\u6D6A",
       manaCost: 85,
       cooldown: 67.5,
       castRange: 10,
@@ -5147,11 +5147,11 @@ var FRENZY_AS_PCT = 0.6;
 var FRENZY_MS_PCT = 0.2;
 var RHOKA = {
   id: "rhoka",
-  name: "Rhoka, Wildclaw",
+  name: "\u7F57\u5361, \u91CE\u722A",
   role: "Skirmisher",
   blurb: "A diving brawler who feeds on extended fights and bleeds targets out.",
   passive: {
-    name: "Rend",
+    name: "\u6495\u626F",
     description: "Attacks apply a stacking short bleed. Abilities deal 15 percent more damage per bleed on the target (up to 3); three bleeds fester, cutting healing. During Apex Frenzy her attacks on bleeding targets restore health.",
     onAttackHit(ctx, self, target) {
       if (target.kind === "tower" || target.kind === "sanctum") return;
@@ -5208,7 +5208,7 @@ var RHOKA = {
   growth: { hp: 98, mana: 32, ad: 3.8, armor: 2.4, mr: 1.6 },
   abilities: {
     Q: {
-      name: "Pounce",
+      name: "\u6251\u51FB",
       manaCost: 40,
       cooldown: 5.5,
       // Six, not five: a skirmisher who cannot re-enter after a step back
@@ -5233,7 +5233,7 @@ var RHOKA = {
       }
     },
     W: {
-      name: "Savage Sweep",
+      name: "\u91CE\u86EE\u6A2A\u626B",
       manaCost: 45,
       cooldown: 6,
       castRange: 0,
@@ -5248,7 +5248,7 @@ var RHOKA = {
       }
     },
     E: {
-      name: "Primal Howl",
+      name: "\u539F\u59CB\u568E\u53EB",
       manaCost: 40,
       cooldown: 8.5,
       castRange: 0,
@@ -5262,7 +5262,7 @@ var RHOKA = {
       }
     },
     R: {
-      name: "Apex Frenzy",
+      name: "\u5DC5\u5CF0\u72C2\u70ED",
       manaCost: 85,
       cooldown: 60,
       castRange: 0,
@@ -5289,13 +5289,13 @@ var BARBED_MARK = {
 };
 var SYLRA = {
   id: "sylra",
-  name: "Sylra, Thornweaver",
+  name: "\u5E0C\u5C14\u62C9, \u8346\u68D8\u7EC7\u624B",
   role: "Mage",
   blurb: "A zone-control mage who locks areas down and punishes anyone who stays.",
   // Barbed Marks lives entirely in her ability specs (mark effects), so the
   // passive entry is descriptive only.
   passive: {
-    name: "Barbed Marks",
+    name: "\u5012\u523A\u6807\u8BB0",
     description: "Her abilities mark enemies; the third mark on a target roots it briefly."
   },
   base: {
@@ -5321,7 +5321,7 @@ var SYLRA = {
   },
   abilities: {
     Q: {
-      name: "Thorn Bolt",
+      name: "\u8346\u68D8\u7BAD",
       manaCost: 45,
       cooldown: 5.5,
       castRange: 10.5,
@@ -5340,7 +5340,7 @@ var SYLRA = {
       }
     },
     W: {
-      name: "Bramble Field",
+      name: "\u8346\u68D8\u4E1B",
       manaCost: 60,
       cooldown: 9,
       castRange: 8.5,
@@ -5357,7 +5357,7 @@ var SYLRA = {
       }
     },
     E: {
-      name: "Verdant Shell",
+      name: "\u7FE0\u7EFF\u4E4B\u58F3",
       manaCost: 50,
       cooldown: 8.5,
       castRange: 8,
@@ -5382,7 +5382,7 @@ var SYLRA = {
       }
     },
     R: {
-      name: "Overgrowth",
+      name: "\u75AF\u957F",
       manaCost: 85,
       cooldown: 60,
       castRange: 9,
@@ -5432,11 +5432,11 @@ var BULWARK_ARMOR = 8;
 var BULWARK_DURATION_S = 0.4;
 var TORV = {
   id: "torv",
-  name: "Torv, Stonehorn",
+  name: "\u6258\u592B, \u77F3\u89D2",
   role: "Support",
   blurb: "The one who starts the fight: engage, disruption, and a protective aura.",
   passive: {
-    name: "Bulwark Aura",
+    name: "\u58C1\u5792\u5149\u73AF",
     description: "Nearby allied champions gain 8 bonus armor.",
     onTick(ctx, self) {
       for (const u of ctx.units.values()) {
@@ -5465,7 +5465,7 @@ var TORV = {
   growth: { hp: 92, mana: 35, ad: 3.2, armor: 3.2, mr: 2 },
   abilities: {
     Q: {
-      name: "Horn Charge",
+      name: "\u7284\u89D2\u51B2\u950B",
       manaCost: 45,
       cooldown: 7.5,
       // Six, the roster's melee engage floor: the charge is Torv's only
@@ -5491,7 +5491,7 @@ var TORV = {
       }
     },
     W: {
-      name: "Challenge",
+      name: "\u6311\u6218",
       manaCost: 50,
       cooldown: 10.5,
       castRange: 0,
@@ -5504,7 +5504,7 @@ var TORV = {
       }
     },
     E: {
-      name: "Tremor Stomp",
+      name: "\u9707\u5730\u8DF5\u8E0F",
       manaCost: 40,
       cooldown: 6,
       castRange: 0,
@@ -5527,7 +5527,7 @@ var TORV = {
       }
     },
     R: {
-      name: "Faultline",
+      name: "\u65AD\u5C42",
       manaCost: 85,
       cooldown: 67.5,
       castRange: 9,
@@ -5564,11 +5564,11 @@ var BACKSTEP_PATCH_RADIUS = 1.5;
 var BACKSTEP_PATCH_DURATION_S = 1.5;
 var VESK = {
   id: "vesk",
-  name: "Vesk, the Longshot",
+  name: "\u7EF4\u65AF\u514B, \u8FDC\u5C04",
   role: "Marksman",
   blurb: "Artillery range, immobile and terrifying: punishes anything held still.",
   passive: {
-    name: "Deadstill",
+    name: "\u6B7B\u5BC2",
     description: "Attacks deal 15 percent bonus damage to slowed or immobilized targets.",
     modifyDamage(ctx, _self, target, amount, _dtype, via) {
       if (via !== "attack") return amount;
@@ -5624,7 +5624,7 @@ var VESK = {
   growth: { hp: 88, mana: 32, ad: 5.5, armor: 2, mr: 1.3 },
   abilities: {
     Q: {
-      name: "Piercing Round",
+      name: "\u7A7F\u900F\u5F39",
       manaCost: 45,
       cooldown: 6,
       castRange: 14,
@@ -5649,7 +5649,7 @@ var VESK = {
       }
     },
     W: {
-      name: "Caltrops",
+      name: "\u94C1\u84BA\u85DC",
       manaCost: 50,
       cooldown: 9,
       castRange: 8,
@@ -5665,7 +5665,7 @@ var VESK = {
       }
     },
     E: {
-      name: "Backstep",
+      name: "\u540E\u64A4\u6B65",
       manaCost: 35,
       cooldown: 7.5,
       castRange: 3,
@@ -5678,7 +5678,7 @@ var VESK = {
       }
     },
     R: {
-      name: "Horizon Shot",
+      name: "\u5929\u9645\u5C04\u51FB",
       manaCost: 85,
       cooldown: 67.5,
       // Map-crossing artillery (the map is 150 across): the shot itself is
@@ -6052,19 +6052,19 @@ var CAMPS_CONTENT = {
 
 // src/sim/content/items.ts
 var T1 = [
-  { id: "iron_blade", name: "Iron Blade", cost: 350, tier: 1, stats: { ad: 10 } },
-  { id: "spark_rod", name: "Spark Rod", cost: 435, tier: 1, stats: { ap: 20 } },
-  { id: "guard_plate", name: "Guard Plate", cost: 300, tier: 1, stats: { armor: 15 } },
-  { id: "null_cloak", name: "Null Cloak", cost: 450, tier: 1, stats: { mr: 15 } },
-  { id: "heart_gem", name: "Heart Gem", cost: 400, tier: 1, stats: { hp: 150 } },
-  { id: "mind_gem", name: "Mind Gem", cost: 350, tier: 1, stats: { mana: 200 } },
-  { id: "swift_fang", name: "Swift Fang", cost: 300, tier: 1, stats: { attackSpeedPct: 0.12 } },
-  { id: "traveler_soles", name: "Traveler Soles", cost: 300, tier: 1, stats: { moveSpeed: 0.25 } }
+  { id: "iron_blade", name: "\u94C1\u5203", cost: 350, tier: 1, stats: { ad: 10 } },
+  { id: "spark_rod", name: "\u7535\u5149\u6756", cost: 435, tier: 1, stats: { ap: 20 } },
+  { id: "guard_plate", name: "\u62A4\u536B\u677F\u7532", cost: 300, tier: 1, stats: { armor: 15 } },
+  { id: "null_cloak", name: "\u865A\u7A7A\u6597\u7BF7", cost: 450, tier: 1, stats: { mr: 15 } },
+  { id: "heart_gem", name: "\u751F\u547D\u5B9D\u77F3", cost: 400, tier: 1, stats: { hp: 150 } },
+  { id: "mind_gem", name: "\u6CD5\u529B\u5B9D\u77F3", cost: 350, tier: 1, stats: { mana: 200 } },
+  { id: "swift_fang", name: "\u8FC5\u6377\u4E4B\u7259", cost: 300, tier: 1, stats: { attackSpeedPct: 0.12 } },
+  { id: "traveler_soles", name: "\u65C5\u8005\u8349\u978B", cost: 300, tier: 1, stats: { moveSpeed: 0.25 } }
 ];
 var T2 = [
   {
     id: "warbrand",
-    name: "Warbrand",
+    name: "\u6218\u75D5\u5DE8\u5203",
     cost: 1300,
     tier: 2,
     stats: { ad: 56 },
@@ -6072,7 +6072,7 @@ var T2 = [
   },
   {
     id: "storm_staff",
-    name: "Storm Staff",
+    name: "\u98CE\u66B4\u6CD5\u6756",
     cost: 1600,
     tier: 2,
     stats: { ap: 105 },
@@ -6080,7 +6080,7 @@ var T2 = [
   },
   {
     id: "sunder_axe",
-    name: "Sunder Axe",
+    name: "\u7834\u7532\u65A7",
     cost: 1350,
     tier: 2,
     stats: { ad: 30, armorPenPct: 0.35 },
@@ -6088,7 +6088,7 @@ var T2 = [
   },
   {
     id: "void_crystal",
-    name: "Void Crystal",
+    name: "\u865A\u7A7A\u6C34\u6676",
     cost: 1450,
     tier: 2,
     stats: { ap: 50, mrPenPct: 0.35 },
@@ -6096,7 +6096,7 @@ var T2 = [
   },
   {
     id: "stone_bulwark",
-    name: "Stone Bulwark",
+    name: "\u78D0\u77F3\u58C1\u5792",
     cost: 1300,
     tier: 2,
     stats: { armor: 20, hp: 180 },
@@ -6104,7 +6104,7 @@ var T2 = [
   },
   {
     id: "spirit_ward",
-    name: "Spirit Ward",
+    name: "\u7075\u9B42\u5B88\u536B",
     cost: 1400,
     tier: 2,
     stats: { mr: 20, hp: 180 },
@@ -6112,7 +6112,7 @@ var T2 = [
   },
   {
     id: "colossus_heart",
-    name: "Colossus Heart",
+    name: "\u5DE8\u50CF\u4E4B\u5FC3",
     cost: 1400,
     tier: 2,
     stats: { hp: 350 },
@@ -6120,7 +6120,7 @@ var T2 = [
   },
   {
     id: "archmind",
-    name: "Archmind",
+    name: "\u81F3\u9AD8\u5FC3\u667A",
     cost: 1300,
     tier: 2,
     stats: { ap: 60, mana: 300 },
@@ -6128,7 +6128,7 @@ var T2 = [
   },
   {
     id: "windrazor",
-    name: "Windrazor",
+    name: "\u98CE\u4E4B\u5243\u5200",
     cost: 1150,
     tier: 2,
     stats: { ad: 35, attackSpeedPct: 0.35 },
@@ -6136,7 +6136,7 @@ var T2 = [
   },
   {
     id: "titan_cleaver",
-    name: "Titan Cleaver",
+    name: "\u6CF0\u5766\u5288\u5200",
     cost: 1250,
     tier: 2,
     stats: { ad: 35, hp: 200 },
@@ -6144,7 +6144,7 @@ var T2 = [
   },
   {
     id: "runeblade",
-    name: "Runeblade",
+    name: "\u7B26\u6587\u4E4B\u5203",
     cost: 1300,
     tier: 2,
     stats: { ad: 28, ap: 42 },
@@ -6152,7 +6152,7 @@ var T2 = [
   },
   {
     id: "swiftplate",
-    name: "Swiftplate",
+    name: "\u8FC5\u6377\u677F\u7532",
     cost: 1050,
     tier: 2,
     stats: { armor: 25, attackSpeedPct: 0.2 },
@@ -6160,7 +6160,7 @@ var T2 = [
   },
   {
     id: "clarity_stone",
-    name: "Clarity Stone",
+    name: "\u6E05\u660E\u77F3",
     cost: 1250,
     tier: 2,
     stats: { mr: 20, mana: 250 },
@@ -6168,7 +6168,7 @@ var T2 = [
   },
   {
     id: "swift_treads",
-    name: "Swift Treads",
+    name: "\u75BE\u884C\u80EB\u7532",
     cost: 900,
     tier: 2,
     stats: { moveSpeed: 0.55 },
@@ -6178,7 +6178,7 @@ var T2 = [
 var T3 = [
   {
     id: "doombrand",
-    name: "Doombrand",
+    name: "\u672B\u65E5\u70D9\u5370",
     cost: 2900,
     tier: 3,
     stats: { ad: 95 },
@@ -6186,7 +6186,7 @@ var T3 = [
   },
   {
     id: "tempest_core",
-    name: "Tempest Core",
+    name: "\u98CE\u66B4\u6838\u5FC3",
     cost: 3200,
     tier: 3,
     stats: { ap: 175 },
@@ -6194,7 +6194,7 @@ var T3 = [
   },
   {
     id: "rendfang",
-    name: "Rendfang",
+    name: "\u6495\u88C2\u4E4B\u7259",
     cost: 2900,
     tier: 3,
     stats: { ad: 55, armorPenPct: 0.45 },
@@ -6202,7 +6202,7 @@ var T3 = [
   },
   {
     id: "null_engine",
-    name: "Null Engine",
+    name: "\u865A\u7A7A\u5F15\u64CE",
     cost: 3e3,
     tier: 3,
     stats: { ap: 90, mrPenPct: 0.45 },
@@ -6210,7 +6210,7 @@ var T3 = [
   },
   {
     id: "skyshear",
-    name: "Skyshear",
+    name: "\u88C2\u7A7A\u8005",
     cost: 2800,
     tier: 3,
     stats: { ad: 60, attackSpeedPct: 0.55, moveSpeed: 0.35 },
@@ -6218,7 +6218,7 @@ var T3 = [
   },
   {
     id: "worldheart",
-    name: "Worldheart",
+    name: "\u4E16\u754C\u4E4B\u5FC3",
     cost: 3e3,
     tier: 3,
     stats: { hp: 650, armor: 25, mr: 25 },
@@ -8276,14 +8276,14 @@ function attachBot(sim, unitId, botId) {
 // src/sim/content/sigils.ts
 var RIFTSTEP = {
   id: "riftstep",
-  name: "Riftstep",
+  name: "\u88C2\u9699\u6B65",
   cooldown: 150,
   castRange: 5.5,
   spec: { kind: "dash", range: 5.5 }
 };
 var ZEPHYR = {
   id: "zephyr",
-  name: "Zephyr",
+  name: "\u548C\u98CE",
   cooldown: 150,
   castRange: 0,
   spec: {
@@ -8294,7 +8294,7 @@ var ZEPHYR = {
 };
 var MEND = {
   id: "mend",
-  name: "Mend",
+  name: "\u6108\u5408",
   cooldown: 150,
   castRange: 7,
   spec: {
@@ -8305,7 +8305,7 @@ var MEND = {
 };
 var SEAR = {
   id: "sear",
-  name: "Sear",
+  name: "\u707C\u70E7",
   cooldown: 120,
   castRange: 7,
   spec: {
@@ -18106,7 +18106,7 @@ function foreignNames(s) {
     s.passive?.flavor,
     ...["Q", "W", "E", "R"].flatMap((k) => [a[k]?.name, a[k]?.flavor])
   ];
-  return texts.filter((n) => typeof n === "string" && !/^[\x20-\x7e]*$/.test(n));
+  return texts.filter((n) => typeof n === "string" && !/^[^\x00-\x1f\x7f]*$/.test(n));
 }
 async function suggestKit(deps, accountId, req) {
   if (!deps.apiKey) {
@@ -18195,10 +18195,10 @@ async function suggestKit(deps, accountId, req) {
     }
     const foreign = foreignNames(suggestion);
     if (foreign.length > 0) {
-      lastErrors = [`names not in English: ${foreign.join(", ")}`];
+      lastErrors = [`names contain control characters: ${foreign.join(", ")}`];
       retry(
-        `These names or flavor lines are not plain English: ${foreign.join(", ")}. Rewrite them in English (ASCII letters only), keep everything else, and answer with ONLY the JSON object.`,
-        "The names were not English, asking again"
+        `These names or flavor lines contain control characters: ${foreign.join(", ")}. Rewrite them as one clean line of text (any language is fine, Chinese preferred), keep everything else, and answer with ONLY the JSON object.`,
+        "The names had control characters, asking again"
       );
       continue;
     }
@@ -20023,7 +20023,7 @@ function briefRules() {
   const identity = [
     `Identity: "name" at most ${NAME_MAX3} characters, "title" at most ${NAME_MAX3} (the words after the name, no comma of your own), "tagline" at most ${TAGLINE_MAX2} (the one line that tells four allies what this kit does).`,
     `"role" is exactly one of ${FORGED_ROLES.join(", ")}.`,
-    "Names and titles are original English, like every other champion in the game: no borrowed game IP, no accents, ASCII letters only."
+    "Names and titles are original, in Chinese like the rest of the game: no borrowed game IP, no control characters, one clean line each."
   ].join(" ");
   const splash = '"splash" is one sentence describing the champion as a PICTURE, for the art step: silhouette, materials, mood, one accent colour, one memorable detail. No camera or style words, no artist names.';
   const task = 'Answer with ONLY a JSON object, no prose around it: { "comment": string, "name": string, "title": string, "tagline": string, "role": string, "splash": string, "passive": { "template": id, "params": {..}, "name": string, "flavor": string }, "abilities": { "Q": Ability, "W": Ability, "E": Ability, "R": Ability }, "base": { "hp", "mana", "ad", "armor", "mr", "attackRange", "attackSpeed", "moveSpeed", "hpRegen", "manaRegen", "radius" }, "growth": { "hp", "mana", "ad", "armor", "mr" } }. "comment" is one or two plain sentences to the creator saying what you made of their line, in THEIR language. Compact JSON: no indentation, no line breaks.';
@@ -20079,7 +20079,7 @@ function authoredText(s) {
 }
 function foreignNames2(s) {
   return [s.name, s.title, s.passive?.name, ...KIT_KEYS3.map((k) => s.abilities[k]?.name)].filter(
-    (n) => typeof n === "string" && n !== "" && !/^[\x20-\x7e]*$/.test(n)
+    (n) => typeof n === "string" && n !== "" && !/^[^\x00-\x1f\x7f]*$/.test(n)
   );
 }
 function formState3(def) {
@@ -20182,10 +20182,10 @@ async function briefChampion(deps, accountId, req) {
     }
     const foreign = foreignNames2(suggestion);
     if (foreign.length > 0) {
-      lastErrors = [`names not in English: ${foreign.join(", ")}`];
+      lastErrors = [`names contain control characters: ${foreign.join(", ")}`];
       retry(
-        `These names are not plain English: ${foreign.join(", ")}. Rewrite them in English (ASCII letters only), keep everything else, and answer with ONLY the JSON object.`,
-        "The names were not English, asking again"
+        `These names contain control characters: ${foreign.join(", ")}. Rewrite them as one clean line of text (Chinese is fine), keep everything else, and answer with ONLY the JSON object.`,
+        "The names had control characters, asking again"
       );
       continue;
     }
