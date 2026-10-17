@@ -454,8 +454,7 @@ export function showLanding(
       el(
         'p',
         'pg-tag',
-        'A 5v5 MOBA that runs in a browser tab. Three lanes, ten champions, ' +
-          'jungle camps and fog of war. Nothing to install.',
+        '浏览器里就能玩的 5v5 MOBA：三条兵线、十位英雄、野区营地与战争迷雾，无需安装。',
       ),
     );
     // Under the tagline: the live count. No repository link here: this
@@ -480,7 +479,11 @@ export function showLanding(
     const online = el('section', 'pg-card gold');
     online.append(
       el('h2', '', '创建免费账号'),
+<<<<<<< HEAD
       el('p', '', 'It keeps your rating and your record, and opens these.'),
+=======
+      el('p', '', '留住你的段位和战绩，解锁这些。'),
+>>>>>>> deploy-render
     );
     // The three the home stands at full height, wearing the paintings the
     // home gives them, standing beside the form rather than under it:

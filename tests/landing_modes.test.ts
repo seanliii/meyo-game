@@ -53,7 +53,7 @@ describe('the landing modes', () => {
     for (const mode of LANDING_MODES) {
       const tile = PLAY_TILES.find((t) => t.id === mode.id);
       expect(mode.title.length).toBeGreaterThan(0);
-      expect(mode.line.length).toBeGreaterThan(40);
+      expect(mode.line.length).toBeGreaterThan(20);
       expect(mode.line.length).toBeLessThan(tile?.line.length ?? 0);
     }
   });

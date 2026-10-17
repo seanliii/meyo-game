@@ -19,8 +19,7 @@ const HTML = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 // the same sentence: a description that has drifted from the landing is a
 // promise the page does not keep.
 const PITCH =
-  'A 5v5 MOBA that runs in a browser tab. Three lanes, ten champions, ' +
-  'jungle camps and fog of war. Nothing to install.';
+  '浏览器里就能玩的 5v5 MOBA：三条兵线、十位英雄、野区营地与战争迷雾，无需安装。';
 
 // The value of a meta tag, whichever attribute names it and however the
 // formatter has wrapped the line.
