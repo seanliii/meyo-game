@@ -561,7 +561,7 @@ export function showLanding(
     offline.append(
       // "或先试玩一把" while it stood second; stacked it stands first
       // now, and a heading that begins with "或" has nothing to follow.
-      el('h2', '', 'Play now'),
+      el('h2', '', '立即开玩'),
       el('p', '', PLAY_NOW_LINE),
       tryShot,
       el('p', 'pg-card-fine', PLAY_NOW_FINE),
