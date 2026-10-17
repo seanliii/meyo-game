@@ -50,8 +50,8 @@ export function ladderLead(page: Pick<LandingPage, 'ladder' | 'bots' | 'accounts
   const placed = page.ladder.total + page.bots.total;
   if (placed === 0) {
     return page.accounts === 0
-      ? 'Nobody has placed yet. The first name here could be yours.'
-      : `${page.accounts} accounts, none placed yet. The first name here could be yours.`;
+      ? '还没有人上榜。第一个名字可能就是你。'
+      : `已有 ${page.accounts} 个账号，还没人上榜。第一个名字可能就是你。`;
   }
   const names = placed === 1 ? '已有 1 人上榜' : `${placed} names placed`;
   return `${names}, ${page.accounts} accounts. Yours goes here with a free account.`;
@@ -100,7 +100,7 @@ function column(ladder: LandingLadder): HTMLElement {
   const box = el('div', 'pg-ladder-col');
   box.appendChild(el('h3', '', columnTitle(ladder.way)));
   if (ladder.rows.length === 0) {
-    box.appendChild(el('p', 'pg-ladder-empty', 'No name placed here yet.'));
+    box.appendChild(el('p', 'pg-ladder-empty', '这一栏还没有人上榜。'));
     return box;
   }
   const list = el('ol', '');

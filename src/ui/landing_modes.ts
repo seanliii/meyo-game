@@ -40,7 +40,7 @@ export const PRACTICE_ART = tileArtUrl('practice');
 // 0024), people when they are on and bots in every empty seat.
 export const PLAY_NOW_CALL = '立即在浏览器开玩';
 export const PLAY_NOW_LINE =
-  'A real 5v5 online: players when they are on, bots in every empty seat.';
+  '真在线 5v5：有人时匹配真人，空位机器人补齐。';
 export const PLAY_NOW_FINE = '无需账号、无需安装。不计段位。';
 // The offline match stays, one quiet line under the button: it is what
 // works when the server does not.
